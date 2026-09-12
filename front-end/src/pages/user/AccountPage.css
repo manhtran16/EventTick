@@ -1,0 +1,110 @@
+/* body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background-color: #1e1e1e;
+  color: #fff;
+} */
+
+.account-page-container {
+  display: flex;
+  min-height: 100vh;
+}
+
+.account-page-sidebar {
+  width: 250px;
+  background-color: #2c2c2c;
+  padding: 20px;
+}
+
+.account-page-sidebar h2 {
+  font-size: 18px;
+  margin-bottom: 20px;
+}
+
+.account-page-sidebar ul {
+  list-style: none;
+  padding: 0;
+}
+
+.account-page-sidebar ul li {
+  margin: 10px 0;
+  cursor: pointer;
+}
+
+.account-page-main {
+  flex: 1;
+  padding: 40px;
+}
+
+.account-page-list {
+  font-size: 14px;
+  margin-bottom: 20px;
+  color: #aaa;
+}
+
+.account-page-main h1 {
+  font-size: 24px;
+  margin-bottom: 10px;
+}
+
+.account-page-instruction {
+  font-size: 14px;
+  margin-bottom: 30px;
+  color: #ccc;
+}
+
+.account-page-form-group {
+  margin-bottom: 20px;
+}
+
+label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: bold;
+}
+
+.account-page-container input[type="text"],
+.account-page-container input[type="email"] {
+  width: 100%;
+  padding: 10px;
+  border: none;
+  border-radius: 5px;
+  background-color: #333;
+  color: #fff;
+}
+
+.account-page-container input::placeholder {
+  color: #aaa;
+}
+
+.account-page-gender-options {
+  display: flex;
+  gap: 20px;
+  margin-top: 10px;
+  margin-bottom: 30px;
+}
+
+.account-page-gender-options label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+
+.account-page-container input[type="radio"] {
+  accent-color: #28a745;
+}
+
+.account-page-submit-button {
+  background-color: #28a745;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  font-size: 16px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.account-page-submit-button:hover {
+  background-color: #218838;
+}

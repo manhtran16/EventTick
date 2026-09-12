@@ -1,0 +1,20 @@
+[
+  {
+    "username": "demo_organizer",
+    "email": "organizer@demo.com",
+    "password": "123456",
+    "role": "admin",
+    "name": "Nguyễn Văn Tổ Chức",
+    "phone": "0901234567",
+    "gender": "Nam"
+  },
+  {
+    "username": "demo_user",
+    "email": "user@demo.com",
+    "password": "123456",
+    "role": "user",
+    "name": "Trần Thị Khách",
+    "phone": "0909876543",
+    "gender": "Nữ"
+  }
+]

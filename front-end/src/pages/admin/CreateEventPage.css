@@ -1,0 +1,58 @@
+/* body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background-color: #121212;
+  color: #fff;
+} */
+
+.steps-in-register {
+  display: flex;
+  gap: 15px;
+  margin: 40px;
+}
+
+.step-btn {
+  padding: 10px 15px;
+  background-color: #2a2a2a;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.step-btn.active {
+  background-color: #00c853;
+}
+.next-step-btn {
+  background-color: #007bff; /* Blue background */
+  border: none; /* Remove default border */
+  color: white; /* White text color */
+  padding: 10px 20px; /* Space between text and border */
+  text-align: center; /* Center the text */
+  text-decoration: none; /* Remove underline for <a> tags */
+  display: inline-block; /* Allows padding/margin and flows inline */
+  font-size: 16px; /* Increase font size */
+  border-radius: 5px; /* Rounded corners */
+  cursor: pointer; /* Changes mouse cursor to a hand on hover */
+  transition: background-color 0.3s; /* Smooth transition for color change */
+}
+.event-create-close-btn {
+  position: absolute; /* place it top-right if needed */
+  top: 10px;
+  right: 10px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background-color: #f5f5f5;
+  color: #333;
+  font-size: 20px;
+  font-weight: bold;
+  text-decoration: none; /* remove underline */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.event-create-close-btn:hover {
+  background-color: #e74c3c; /* red background on hover */
+  color: #fff;              /* white “X” */
+}

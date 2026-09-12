@@ -1,0 +1,82 @@
+/* body {
+  font-family: Arial, sans-serif;
+  background: #f4f4f9;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+} */
+.register-container {
+  /* background: #fff; */
+  /* padding: 30px; */
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  width: 350px;
+}
+
+.register-form {
+  border-bottom-left-radius: 8px;
+  border-bottom-right-radius: 8px;
+  background: #fff;
+  padding: 30px;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  width: 350px;
+}
+
+.register-text {
+  color: white;
+  font-size: 23px;
+  text-align: center;
+  padding-top: 20px;
+  padding-bottom: 20px;
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+  margin-bottom: 0;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  width: 350px;
+  background-color: #4caf50;
+}
+
+.register-container {
+  margin: auto;
+}
+
+
+.msg-text {
+  color: rgb(187, 9, 9);
+  margin-top: 8px;
+}
+.register-container input,
+.register-container select {
+  width: 100%;
+  padding: 10px;
+  margin: 8px 0;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+.register-container button {
+  width: 100%;
+  padding: 10px;
+  background: #4caf50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+}
+.register-container button:hover {
+  background: #45a049;
+}
+
+.home-link {
+  margin-top: 15px;
+}
+
+.home-link a {
+  text-decoration: none;
+  color: #878d93; /* Blue link */
+  font-weight: bold;
+}
+
+.home-link a:hover {
+  color: #78a192; /* Darker blue on hover */
+}

@@ -1,0 +1,42 @@
+.payment-form {
+  max-width: 400px;
+  margin: auto;
+  padding: 20px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: #fafafa;
+}
+
+.card-input {
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  margin-bottom: 15px;
+}
+
+.card-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.pay-btn {
+  width: 100%;
+  padding: 12px;
+  background: #6772e5;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.pay-btn:disabled {
+  background: #bbb;
+  cursor: not-allowed;
+}
+
+.error {
+  margin-top: 10px;
+  color: red;
+}

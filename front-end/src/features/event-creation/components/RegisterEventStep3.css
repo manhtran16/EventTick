@@ -1,0 +1,61 @@
+h2 {
+  color: #00c853;
+  margin-bottom: 20px;
+}
+
+.step-three-section {
+  margin-bottom: 30px;
+  background-color: #1e1e1e;
+  padding: 20px;
+  border-radius: 10px;
+}
+
+.step-three-form-group {
+  margin-bottom: 20px;
+}
+
+.step-three-section label {
+  display: block;
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+
+.step-three-section input[type="text"],
+.step-three-section textarea {
+  width: 100%;
+  padding: 10px;
+  border-radius: 5px;
+  border: none;
+  background-color: #2a2a2a;
+  color: #fff;
+}
+
+.step-three-url-preview {
+  margin-top: 10px;
+  font-size: 14px;
+  color: #ccc;
+}
+
+.step-three-radio-group {
+  margin-top: 10px;
+}
+
+.step-three-radio-option {
+  margin-bottom: 10px;
+}
+
+.step-three-radio-option input {
+  margin-right: 10px;
+}
+
+.step-three-char-count {
+  font-size: 12px;
+  color: #aaa;
+  text-align: right;
+}
+
+.step-three-main {
+  flex: 1;
+  padding: 30px;
+  overflow-y: auto;
+}

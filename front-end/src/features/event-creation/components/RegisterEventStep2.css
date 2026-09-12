@@ -1,0 +1,299 @@
+.step-two-container {
+  max-width: 1200px;
+  margin: 40px auto;
+  padding: 20px;
+  background-color: #1e1e1e;
+  border-radius: 10px;
+  position: relative;
+}
+
+.step-two-save-session {
+  background-color: #00c853;
+  color: #fff;
+  padding: 10px 14px;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  transition:
+    background-color 0.3s ease,
+    transform 0.2s ease;
+  margin-top: 20px;
+  display: inline-block;
+}
+
+.step-two-save-session:hover {
+  background-color: #00e676;
+  transform: scale(1.05);
+}
+
+.step-two-save-session:active {
+  background-color: #00b248;
+  transform: scale(0.95);
+}
+
+.step-two-main h2 {
+  color: #00c853;
+  margin-bottom: 20px;
+}
+
+.step-two-form-group {
+  margin-bottom: 20px;
+}
+
+.step-two-main label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: bold;
+}
+
+.step-two-main input,
+.step-two-main textarea {
+  width: 100%;
+  padding: 10px;
+  border-radius: 5px;
+  border: none;
+  background-color: #2a2a2a;
+  color: #fff;
+}
+
+.step-two-ticket-types {
+  margin-top: 30px;
+  background-color: #2a2a2a;
+  padding: 15px;
+  border-radius: 5px;
+}
+
+.step-two-ticket-types h3 {
+  margin-bottom: 15px;
+  color: #00c853;
+}
+
+.step-two-ticket-list {
+  margin-top: 20px;
+}
+
+.step-two-ticket-item {
+  background-color: #1f1f1f;
+  padding: 15px;
+  border-radius: 5px;
+  margin-bottom: 10px;
+}
+
+.step-two-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.step-two-actions button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 5px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.step-two-create-ticket {
+  background-color: #00c853;
+  color: #fff;
+}
+
+.step-two-create-session {
+  background-color: #00c853;
+  color: #fff;
+  padding: 12px 24px;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  transition:
+    background-color 0.3s ease,
+    transform 0.2s ease;
+  margin-top: 20px;
+  display: inline-block;
+}
+
+.step-two-create-session:hover {
+  background-color: #00e676;
+  transform: scale(1.05);
+}
+
+.step-two-create-session:active {
+  background-color: #00b248;
+  transform: scale(0.95);
+}
+
+/* Modal styles */
+.step-two-modal {
+  display: none; /* hidden by default */
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.step-two-modal.open {
+  display: flex; /* show when open */
+}
+
+.step-two-modal-content {
+  background-color: #1e1e1e;
+  padding: 30px;
+  border-radius: 10px;
+  width: 600px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.step-two-modal-content h3 {
+  margin-top: 0;
+  color: #00c853;
+}
+
+.step-two-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+  position: sticky;
+  bottom: 0;
+  background-color: #1e1e1e;
+  padding-top: 10px;
+}
+
+.step-two-modal-actions button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 5px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.step-two-save-btn {
+  background-color: #00c853;
+  color: #fff;
+}
+
+.step-two-cancel-btn {
+  background-color: #ccc;
+  color: #000;
+}
+
+/* Table styling */
+#ticketTable {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 15px;
+  font-size: 14px;
+  color: #fff;
+}
+
+#ticketTable thead {
+  background-color: #00c853;
+}
+
+#ticketTable th {
+  padding: 12px;
+  text-align: left;
+  font-weight: bold;
+  color: #fff;
+}
+
+#ticketTable tbody tr {
+  background-color: #1f1f1f;
+  transition: background-color 0.2s ease;
+}
+
+#ticketTable tbody tr:nth-child(even) {
+  background-color: #2a2a2a;
+}
+
+#ticketTable td {
+  padding: 12px;
+  border-bottom: 1px solid #333;
+}
+
+#ticketTable tbody tr:hover {
+  background-color: #333;
+}
+
+.step-two-create-session {
+  background-color: #00c853;
+  /* Bright green */
+  color: #fff;
+  /* White text */
+  padding: 12px 24px;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  transition:
+    background-color 0.3s ease,
+    transform 0.2s ease;
+  margin-top: 0pc;
+  margin-left: 160px;
+  display: inline-block;
+}
+
+.step-two-create-session:hover {
+  background-color: #00e676;
+  /* Lighter green on hover */
+  transform: scale(1.05);
+  /* Slight zoom effect */
+}
+.hihi-error {
+  color: red;
+  font-size: 14px;
+  margin-top: 4px;
+  display: block;
+}
+
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"] {
+  padding: 8px;
+  font-size: 15px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.step-two-create-session:active {
+  background-color: #00b248;
+  /* Darker green when clicked */
+  transform: scale(0.95);
+  /* Pressed effect */
+}
+.step-two-close-btn {
+  position: absolute; /* place it in the corner of modal */
+  top: 10px;
+  right: 10px;
+  width: 32px;
+  height: 32px;
+  background-color: transparent;
+  border: none;
+  color: #fff; /* white X */
+  font-size: 24px;
+  font-weight: bold;
+  cursor: pointer;
+  transition:
+    color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.step-two-close-btn:hover {
+  color: #00c853; /* green on hover */
+  transform: scale(1.1); /* slight zoom */
+}
+
+.step-two-close-btn:active {
+  transform: scale(0.95); /* pressed effect */
+}

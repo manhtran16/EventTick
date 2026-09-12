@@ -1,0 +1,267 @@
+.ticket {
+  display: flex;
+  width: 1200px;
+  margin: auto;
+  background: #fff;
+  border-radius: 20px;
+  overflow: hidden;
+  position: relative;
+}
+
+.ticket-left {
+  flex: 1;
+  padding: 30px;
+  position: relative;
+}
+
+.ticket-left {
+  background-color: #38383d;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+
+  border-right: 6px dashed #27272a;
+}
+
+.ticket-left h2 {
+  margin: 0;
+  font-size: 20px;
+  color: #00ff99;
+}
+
+.ticket-left p {
+  margin: 10px 0;
+  font-size: 16px;
+}
+
+.ticket-left button {
+  background-color: #00ff99;
+  color: #000;
+  border: none;
+  padding: 10px 20px;
+  font-weight: bold;
+  border-radius: 5px;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.ticket-right {
+  background-image: url("your-image.jpg");
+  /* Replace with actual image path */
+  background-size: cover;
+  background-position: center;
+}
+
+.ticket-right {
+  width: 800px;
+  height: 400px;
+  overflow: hidden;
+  /* hides the extra parts */
+}
+
+.ticket-right img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* crops the image nicely */
+}
+
+/* Stitch in the middle */
+.ticket::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    #ccc,
+    #ccc 5px,
+    transparent 5px,
+    transparent 10px
+  );
+  transform: translateX(-50%);
+  z-index: 2;
+}
+
+.ticket::after,
+.ticket::before {
+  content: "";
+  position: absolute;
+  left: 33.2%;
+  transform: translateX(-50%);
+  width: 80px;
+  /* wider tear */
+  height: 80px;
+  /* taller tear, adjust as needed */
+  background: radial-gradient(
+    circle at center,
+    #27272a 50%,
+    transparent 51%
+  );
+  background-size: 80px 80px;
+  background-repeat: no-repeat;
+  z-index: 3;
+}
+
+.ticket::before {
+  top: -40px;
+  /* half of height to center the tear */
+}
+
+.ticket::after {
+  bottom: -40px;
+}
+
+.event-details-intro-container {
+  max-width: 1100px;
+  margin: auto;
+  margin-top: 40px;
+
+  margin-left: 180px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+  border-radius: 15px;
+  /* round corners */
+  overflow: hidden;
+  /* ensures header also follows the rounded corners */
+}
+
+.event-intro-header {
+  background-color: #050505;
+  color: #2dc274;
+  padding: 20px;
+  text-align: center;
+}
+
+.event-intro-header h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: bold;
+}
+
+.event-intro-body {
+  padding: 30px;
+  color: white;
+  background-color: #31353e;
+}
+
+.ticket-full-details {
+  padding: 30px;
+  color: white;
+  background-color: #31353e;
+}
+
+.event-intro-body h2 {
+  margin-bottom: 20px;
+}
+
+.event-intro-body p {
+  font-size: 16px;
+}
+
+.event-intro-expand-btn {
+  margin-top: 20px;
+  background-color: #31353e;
+  /* white background */
+  color: white;
+  /* red text */
+  border: none;
+  /* no border */
+  outline: none;
+  /* no outline */
+  padding: 10px 18px;
+  font-size: 15px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: block;
+  /* Makes the button a block-level element */
+  margin: 0 auto;
+  /* Sets vertical margin to 0 and horizontal margins to auto */
+  width: fit-content;
+}
+.session-ended-tag {
+  display: inline-block;
+  margin-left: 10px;
+  padding: 4px 8px;
+  background-color: #e74c3c;
+  color: white;
+  font-size: 12px;
+  font-weight: bold;
+  border-radius: 5px;
+}
+
+.ticket-details-buy-button.disabled {
+  background-color: #999;
+  cursor: not-allowed;
+  pointer-events: none; /* ensures Link or button cannot be clicked */
+}
+
+.ticket-details-container {
+  margin-top: 30px;
+  background-color: rgb(0, 0, 0);
+  padding: 10px;
+  border-radius: 10px;
+  box-shadow: 0 4px 4px rgba(65, 63, 63, 0.7);
+  text-align: center;
+}
+
+.ticket-info {
+  margin-top: 20px;
+  text-align: left;
+}
+
+.ticket-option {
+  display: flex;
+  justify-content: space-between;
+  margin: 10px 0;
+}
+
+.tk-framed {
+  border-radius: 8px;
+  padding: 10px;
+  background-color: #e9eff4;
+}
+
+.ticket-type {
+  font-weight: bold;
+  color: black;
+}
+
+.ticket-price,
+.ticket-slot {
+  color: #333;
+}
+
+.ticket-details-buy-button {
+  background-color: #03d48a;
+  color: white;
+  border: none;
+  padding: 12px 20px;
+  font-size: 16px;
+  border-radius: 5px;
+  cursor: pointer;
+  text-decoration: none; /* remove underline */
+}
+
+/* Hover effect */
+.ticket-details-buy-button:hover {
+  background-color: #026d48; /* slightly darker green */
+  transform: scale(1.05); /* optional: subtle zoom */
+  transition: all 0.2s ease; /* smooth transition */
+}
+
+.event-time {
+  text-align: left;
+  margin-bottom: 15px;
+}
+
+.event-time h2 {
+  margin: 0;
+}
+
+.event-time p {
+  margin: 5px 0 0;
+  color: #55d466;
+}

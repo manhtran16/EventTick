@@ -1,0 +1,128 @@
+[
+  {
+    "eventName": "Anh Trai Say Hi - Concert Tour 2026",
+    "eventDesc": "<p>Đêm nhạc quy tụ dàn nghệ sĩ hàng đầu, sân khấu hoành tráng cùng công nghệ trình diễn hiện đại.</p>",
+    "organizerInfo": "<p><strong>Đơn vị tổ chức:</strong> Demo Concert Co., Ltd.</p>",
+    "venueName": "Nhà Thi Đấu Quân Khu 7, TP. Hồ Chí Minh",
+    "category": "Nhạc sống & Concert",
+    "backgroundImage": "https://picsum.photos/seed/evt-01/800/450",
+    "ownerUsername": "demo_organizer",
+    "isSpecial": true,
+    "isTrending": true,
+    "sessions": [
+      {
+        "daysFromNow": 5,
+        "startHour": 19,
+        "tickets": [
+          { "name": "Vé Thường", "price": 300000, "stock": 100 },
+          { "name": "Vé VIP", "price": 800000, "stock": 30 }
+        ]
+      }
+    ]
+  },
+  {
+    "eventName": "Đêm Nhạc Acoustic Sài Gòn",
+    "eventDesc": "<p>Không gian âm nhạc mộc mạc, ấm cúng với các bản acoustic nổi tiếng.</p>",
+    "organizerInfo": "<p><strong>Đơn vị tổ chức:</strong> Demo Concert Co., Ltd.</p>",
+    "venueName": "Nhà Văn Hoá Thanh Niên, TP. Hồ Chí Minh",
+    "category": "Nhạc sống & Concert",
+    "backgroundImage": "https://picsum.photos/seed/evt-02/800/450",
+    "ownerUsername": "demo_organizer",
+    "isSpecial": false,
+    "isTrending": true,
+    "sessions": [
+      {
+        "daysFromNow": 8,
+        "startHour": 20,
+        "tickets": [
+          { "name": "Vé Thường", "price": 250000, "stock": 150 },
+          { "name": "Vé VIP", "price": 600000, "stock": 20 }
+        ]
+      }
+    ]
+  },
+  {
+    "eventName": "Workshop Thiết Kế UI/UX Cho Người Mới",
+    "eventDesc": "<p>Học các nguyên tắc cơ bản về thiết kế giao diện và trải nghiệm người dùng cùng chuyên gia.</p>",
+    "organizerInfo": "<p><strong>Đơn vị tổ chức:</strong> Demo Learning Hub.</p>",
+    "venueName": "Toong Coworking Space, Quận 1",
+    "category": "Hội thảo & Workshop",
+    "backgroundImage": "https://picsum.photos/seed/evt-03/800/450",
+    "ownerUsername": "demo_organizer",
+    "isSpecial": true,
+    "isTrending": false,
+    "sessions": [
+      {
+        "daysFromNow": 3,
+        "startHour": 9,
+        "tickets": [
+          { "name": "Vé Sinh Viên", "price": 100000, "stock": 50 },
+          { "name": "Vé Thường", "price": 200000, "stock": 50 }
+        ]
+      }
+    ]
+  },
+  {
+    "eventName": "Giải Chạy Marathon Thành Phố",
+    "eventDesc": "<p>Giải chạy thường niên với các cự ly 5km, 10km, 21km dành cho mọi lứa tuổi.</p>",
+    "organizerInfo": "<p><strong>Đơn vị tổ chức:</strong> Demo Sports Vietnam.</p>",
+    "venueName": "Công viên 23/9, TP. Hồ Chí Minh",
+    "category": "Thể Thao",
+    "backgroundImage": "https://picsum.photos/seed/evt-04/800/450",
+    "ownerUsername": "demo_organizer",
+    "isSpecial": false,
+    "isTrending": true,
+    "sessions": [
+      {
+        "daysFromNow": 14,
+        "startHour": 5,
+        "tickets": [
+          { "name": "Cự ly 5km", "price": 350000, "stock": 500 },
+          { "name": "Cự ly 10km", "price": 450000, "stock": 300 },
+          { "name": "Cự ly 21km", "price": 650000, "stock": 100 }
+        ]
+      }
+    ]
+  },
+  {
+    "eventName": "Triển Lãm Nghệ Thuật Đương Đại",
+    "eventDesc": "<p>Trưng bày các tác phẩm nghệ thuật đương đại từ nhiều nghệ sĩ trẻ trong nước.</p>",
+    "organizerInfo": "<p><strong>Đơn vị tổ chức:</strong> Demo Art Gallery.</p>",
+    "venueName": "Bảo Tàng Mỹ Thuật TP. Hồ Chí Minh",
+    "category": "Sân khấu & Nghệ thuật",
+    "backgroundImage": "https://picsum.photos/seed/evt-05/800/450",
+    "ownerUsername": "demo_organizer",
+    "isSpecial": true,
+    "isTrending": false,
+    "sessions": [
+      {
+        "daysFromNow": 2,
+        "startHour": 10,
+        "tickets": [
+          { "name": "Vé Vào Cửa", "price": 80000, "stock": 200 }
+        ]
+      }
+    ]
+  },
+  {
+    "eventName": "Hội Thảo Khởi Nghiệp 2026",
+    "eventDesc": "<p>Chia sẻ kinh nghiệm khởi nghiệp từ các founder và nhà đầu tư thành công.</p>",
+    "organizerInfo": "<p><strong>Đơn vị tổ chức:</strong> Demo Startup Community.</p>",
+    "venueName": "Dreamplex, Quận 3",
+    "category": "Hội thảo & Workshop",
+    "backgroundImage": "https://picsum.photos/seed/evt-06/800/450",
+    "ownerUsername": "demo_organizer",
+    "isSpecial": false,
+    "isTrending": false,
+    "sessions": [
+      {
+        "daysFromNow": 10,
+        "startHour": 13,
+        "tickets": [
+          { "name": "Vé Thường", "price": 150000, "stock": 80 },
+          { "name": "Vé VIP (kèm networking)", "price": 500000, "stock": 20 }
+        ]
+      }
+    ]
+  }
+]

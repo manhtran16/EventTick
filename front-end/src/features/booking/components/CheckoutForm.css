@@ -1,0 +1,21 @@
+.payment-page-button {
+  background-color: #635bff; /* Stripe purple */
+  color: #fff;
+  padding: 12px 24px;
+  border: none;
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.payment-page-button:hover:not(:disabled) {
+  background-color: #5444cc; /* darker purple */
+  transform: translateY(-1px);
+}
+
+.payment-page-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
