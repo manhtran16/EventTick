@@ -1,8 +1,8 @@
 import "./EventDetails.css";
 import { useState, useEffect } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { axiosInstance } from "@/services/apiClient";
-import { Link } from "react-router-dom";
+import DOMPurify from "dompurify";
 
 const EventDetails = () => {
   const { eventId } = useParams();
@@ -124,7 +124,7 @@ const EventDetails = () => {
           <div
             id="event-intro-text"
             dangerouslySetInnerHTML={{
-              __html: isExpanded ? fullText : cutText,
+              __html: DOMPurify.sanitize(isExpanded ? fullText : cutText),
             }}
           />
           <button className="event-intro-expand-btn" onClick={toggleText}>
@@ -221,7 +221,9 @@ const EventDetails = () => {
         <div className="event-intro-body">
           <div
             id="event-intro-text"
-            dangerouslySetInnerHTML={{ __html: event.organizerInfo }}
+            dangerouslySetInnerHTML={{
+              __html: DOMPurify.sanitize(event.organizerInfo || ""),
+            }}
           />{" "}
         </div>
       </div>

@@ -35,7 +35,14 @@ exports.register = async (req, res) => {
 exports.login = async (req, res) => {
   try {
     const { username, password } = req.body;
-    const user = await User.findOne({ username });
+    if (!username || !password) {
+      return res.status(400).json({ success: false, message: "Vui lòng điền đầy đủ tài khoản và mật khẩu" });
+    }
+
+    const identifier = String(username).trim();
+    const user = await User.findOne({
+      $or: [{ username: identifier }, { email: identifier.toLowerCase() }],
+    });
     if (!user) {
       return res.status(401).json({ success: false, message: "Sai tài khoản hoặc mật khẩu" });
     }

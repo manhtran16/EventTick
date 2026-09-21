@@ -1,8 +1,12 @@
 import React, { useEffect, useState } from "react";
 import "./MyEventPage.css";
 import { axiosInstance } from "@/services/apiClient";
+import { Link } from "react-router-dom";
+import { useAuth } from "@/context/AuthContext";
+import { PATHS } from "@/routes/paths";
 
 const MyEventPage = () => {
+  const { user } = useAuth();
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -42,11 +46,24 @@ const MyEventPage = () => {
   return (
     <div className="my-event-container">
       <div className="my-event-sidebar">
-        <h2>Tài khoản của Tâm Chu Minh</h2>
+        <h2>Tài khoản của {user?.name || user?.userName || user?.username || "tôi"}</h2>
         <ul>
-          <li>Cài đặt tài khoản</li>
-          <li>Thông tin tài khoản</li>
-          <li>Vé của tôi</li>
+          <li>
+            <Link
+              to={PATHS.USER_ACCOUNT}
+              style={{ textDecoration: "none", color: "#ffffff" }}
+            >
+              Thông tin tài khoản
+            </Link>
+          </li>
+          <li>
+            <Link
+              to={PATHS.USER_TICKETS}
+              style={{ textDecoration: "none", color: "#ffffff" }}
+            >
+              Vé của tôi
+            </Link>
+          </li>
           <li>
             <strong>Sự kiện của tôi</strong>
           </li>
@@ -81,9 +98,9 @@ const MyEventPage = () => {
                       )}
                     </td>
                     <td>
-                      <a href={`/event/${event._id}`} className="my-event-link">
+                      <Link to={`/event/${event._id}`} className="my-event-link">
                         {event.eventName}
-                      </a>
+                      </Link>
                     </td>
                     <td>{event.eventAddress}</td>
                   </tr>
@@ -98,9 +115,9 @@ const MyEventPage = () => {
               alt="Sunset Illustration"
             />
             <p>Bạn chưa có sự kiện nào</p>
-            <a href="/" className="my-event-btn">
+            <Link to={PATHS.ADMIN_CREATE_EVENT} className="my-event-btn">
               Tạo sự kiện
-            </a>
+            </Link>
           </div>
         )}
       </div>

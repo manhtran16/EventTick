@@ -17,10 +17,7 @@ router.get("/my-event", requireAuth, ctrl.myEvents);
 router.post(
   "/",
   requireAuth,
-  upload.fields([
-    { name: "backgroundImage", maxCount: 1 },
-    { name: "eventImage", maxCount: 1 },
-  ]),
+  upload.any(),
   ctrl.create,
 );
 

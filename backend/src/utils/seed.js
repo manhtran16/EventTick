@@ -90,6 +90,7 @@ async function run() {
             name: t.name,
             price: t.price,
             stock: t.stock,
+            remaining: t.stock,
             sold: 0,
           })),
         };

@@ -17,14 +17,16 @@ const Booking = require("../models/Booking");
 async function decrementStock(eventId, sessionId, ticketId, quantity) {
   const result = await Event.updateOne(
     { _id: eventId },
-    { $inc: { "sessions.$[s].tickets.$[t].sold": quantity } },
+    {
+      $inc: {
+        "sessions.$[s].tickets.$[t].sold": quantity,
+        "sessions.$[s].tickets.$[t].remaining": -quantity,
+      },
+    },
     {
       arrayFilters: [
         { "s._id": sessionId },
-        {
-          "t._id": ticketId,
-          $expr: { $lte: [{ $add: ["$t.sold", quantity] }, "$t.stock"] },
-        },
+        { "t._id": ticketId, "t.remaining": { $gte: quantity } },
       ],
     },
   );
@@ -34,7 +36,12 @@ async function decrementStock(eventId, sessionId, ticketId, quantity) {
 async function restoreStock(eventId, sessionId, ticketId, quantity) {
   await Event.updateOne(
     { _id: eventId },
-    { $inc: { "sessions.$[s].tickets.$[t].sold": -quantity } },
+    {
+      $inc: {
+        "sessions.$[s].tickets.$[t].sold": -quantity,
+        "sessions.$[s].tickets.$[t].remaining": quantity,
+      },
+    },
     { arrayFilters: [{ "s._id": sessionId }, { "t._id": ticketId }] },
   );
 }

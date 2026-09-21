@@ -49,7 +49,15 @@ const RealtimeEventDetails = () => {
     };
     fetchEvent();
 
-    const socket = io("http://localhost:3000", { withCredentials: true });
+    const socket = io("http://localhost:3000", {
+      withCredentials: true,
+      reconnectionAttempts: 1,
+      timeout: 2000,
+    });
+    socket.on("connect_error", () => {
+      // Gracefully silence reconnection spam when socket.io server is not running
+      socket.disconnect();
+    });
     socket.emit("join_event_room", eventId);
 
     socket.on("event_stock_update", (payload) => {
@@ -240,7 +248,11 @@ const RealtimeEventDetails = () => {
                     <td>{ticket.name}</td>
                     <td>{ticket.price.toLocaleString()} ₫</td>
                     <td style={{ fontSize: "smaller" }}>{ticket.desc}</td>
-                    <td>{ticket.numberOfTicketLeft}</td>
+                    <td>
+                      {ticket.numberOfTicketLeft !== undefined
+                        ? ticket.numberOfTicketLeft
+                        : Math.max(0, (ticket.stock || 0) - (ticket.sold || 0))}
+                    </td>
                     <td>
                       <button
                         className="real-time-event-button-adding-btn"

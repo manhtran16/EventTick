@@ -8,12 +8,19 @@ const { saveUploadedFile } = require("../utils/upload");
  */
 function toClientEvent(eventDoc) {
   const e = eventDoc.toObject();
-  e.sessions = e.sessions.map((s) => ({
+  e.sessions = (e.sessions || []).map((s) => ({
     ...s,
-    tickets: s.tickets.map((t) => ({
-      ...t,
-      soldOut: t.sold >= t.stock ? "true" : "false",
-    })),
+    tickets: (s.tickets || []).map((t) => {
+      const remaining =
+        t.remaining !== undefined
+          ? t.remaining
+          : Math.max(0, (t.stock || 0) - (t.sold || 0));
+      return {
+        ...t,
+        numberOfTicketLeft: remaining,
+        soldOut: remaining <= 0 ? "true" : "false",
+      };
+    }),
   }));
   return e;
 }
@@ -98,8 +105,11 @@ exports.myEvents = async (req, res) => {
 exports.create = async (req, res) => {
   try {
     const payload = JSON.parse(req.body.data || "{}");
-    const backgroundFile = req.files?.backgroundImage?.[0];
-    const eventFile = req.files?.eventImage?.[0];
+    const files = Array.isArray(req.files)
+      ? req.files
+      : Object.values(req.files || {}).flat();
+    const backgroundFile = files.find((f) => f.fieldname === "backgroundImage");
+    const eventFile = files.find((f) => f.fieldname === "eventImage");
 
     if (!payload.eventName) {
       return res.status(400).json({ success: false, message: "Thiếu tên sự kiện" });
@@ -127,6 +137,8 @@ exports.create = async (req, res) => {
           name: t.name,
           price: Number(t.price) || 0,
           stock: Number(t.quantity) || 0,
+          remaining: Number(t.quantity) || 0,
+          sold: 0,
           minOrder: Number(t.minOrder) || 1,
           desc: t.desc,
         })),

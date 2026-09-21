@@ -7,7 +7,8 @@ const ticketSchema = new Schema(
     name: { type: String, required: true },
     price: { type: Number, required: true, min: 0 },
     stock: { type: Number, required: true, min: 0 }, // tổng số vé loại này
-    sold: { type: Number, default: 0, min: 0 }, // số đã bán — KHÔNG sửa trực tiếp, chỉ tăng qua bookingController (atomic $inc)
+    sold: { type: Number, default: 0, min: 0 }, // số đã bán
+    remaining: { type: Number, min: 0 }, // số vé còn lại — dùng cho atomic check & decrement
     minOrder: { type: Number, default: 1 },
     desc: String,
   },
@@ -56,6 +57,14 @@ const eventSchema = new Schema(
 );
 
 eventSchema.pre("save", function (next) {
+  for (const s of this.sessions || []) {
+    for (const t of s.tickets || []) {
+      if (t.remaining === undefined || t.remaining === null) {
+        t.remaining = Math.max(0, (t.stock || 0) - (t.sold || 0));
+      }
+    }
+  }
+
   const allTickets = this.sessions.flatMap((s) => s.tickets);
   this.lowestPrice = allTickets.length ? Math.min(...allTickets.map((t) => t.price)) : 0;
 
