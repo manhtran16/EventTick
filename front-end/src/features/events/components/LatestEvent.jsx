@@ -136,11 +136,11 @@ const LatestEvent = () => {
           {weekEvents.map((item, idx) => (
             <div className="carousel-item" key={item._id || idx}>
               <Link to={`/event/${item._id}`}>
-                <img src={item.backgroundImage} alt={item.eventName} />
+                <img src={item.bannerUrl || item.backgroundImage} alt={item.title || item.eventName} />
               </Link>
 
               <div className="poster-details">
-                <p className="latest-event-title">{item.eventName}</p>
+                <p className="latest-event-title">{item.title || item.eventName}</p>
                 <p className="latest-event-price">
                   🎟 Từ{" "}
                   {new Intl.NumberFormat("vi-VN", {
@@ -166,10 +166,10 @@ const LatestEvent = () => {
           {monthEvents.map((item, idx) => (
             <div className="carousel-item" key={item._id || idx}>
               <Link to={`/event/${item._id}`}>
-                <img src={item.backgroundImage} alt={item.eventName} />
+                <img src={item.bannerUrl || item.backgroundImage} alt={item.title || item.eventName} />
               </Link>
               <div className="poster-details">
-                <p className="latest-event-title">{item.eventName}</p>
+                <p className="latest-event-title">{item.title || item.eventName}</p>
                 <p className="latest-event-price">
                   🎟 Từ{" "}
                   {new Intl.NumberFormat("vi-VN", {

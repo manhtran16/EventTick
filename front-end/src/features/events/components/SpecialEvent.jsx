@@ -89,8 +89,8 @@ const SpecialEvent = () => {
             <div className="special-event-carousel-item" key={index}>
               <Link to={`/event/${item._id}`}>
                 <img
-                  src={item.backgroundImage}
-                  alt={item.eventName || `Carousel Item ${index + 1}`}
+                  src={item.bannerUrl || item.backgroundImage}
+                  alt={item.title || item.eventName || `Carousel Item ${index + 1}`}
                 />
               </Link>
             </div>

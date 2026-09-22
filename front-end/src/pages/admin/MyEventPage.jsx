@@ -81,30 +81,59 @@ const MyEventPage = () => {
                   <th></th>
                   <th>Tên</th>
                   <th>Địa điểm</th>
+                  <th>Trạng thái duyệt</th>
                 </tr>
               </thead>
               <tbody>
-                {events.map((event, index) => (
-                  <tr key={index}>
-                    <td>
-                      {event.eventImage ? (
-                        <img
-                          src={event.eventImage}
-                          alt={event.eventName}
-                          className="my-event-image"
-                        />
-                      ) : (
-                        "No image"
-                      )}
-                    </td>
-                    <td>
-                      <Link to={`/event/${event._id}`} className="my-event-link">
-                        {event.eventName}
-                      </Link>
-                    </td>
-                    <td>{event.eventAddress}</td>
-                  </tr>
-                ))}
+                {events.map((event, index) => {
+                  const status = (event.status || "PENDING").toUpperCase();
+                  const isApproved = status === "APPROVED";
+                  const isRejected = status === "REJECTED";
+                  const statusLabel = isApproved ? "Đã phê duyệt" : isRejected ? "Bị từ chối" : "Chờ Admin duyệt";
+                  const statusColor = isApproved ? "#4ade80" : isRejected ? "#f87171" : "#fbbf24";
+                  const imageSrc = event.thumbnailUrl || event.bannerUrl || event.eventImage;
+
+                  return (
+                    <tr key={index}>
+                      <td>
+                        {imageSrc ? (
+                          <img
+                            src={imageSrc}
+                            alt={event.title || event.eventName}
+                            className="my-event-image"
+                          />
+                        ) : (
+                          "No image"
+                        )}
+                      </td>
+                      <td>
+                        <Link to={`/event/${event._id}`} className="my-event-link">
+                          {event.title || event.eventName}
+                        </Link>
+                      </td>
+                      <td>{event.location || event.eventAddress || event.venueName}</td>
+                      <td>
+                        <span style={{
+                          display: "inline-block",
+                          padding: "4px 8px",
+                          borderRadius: "4px",
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          backgroundColor: `${statusColor}22`,
+                          color: statusColor,
+                          border: `1px solid ${statusColor}55`,
+                        }}>
+                          {statusLabel}
+                        </span>
+                        {isRejected && event.rejectionReason && (
+                          <div style={{ fontSize: "11px", color: "#f87171", marginTop: "4px" }}>
+                            Lý do: {event.rejectionReason}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

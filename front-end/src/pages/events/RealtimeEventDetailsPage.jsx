@@ -18,6 +18,7 @@ const RealtimeEventDetails = () => {
   const [orderKey] = useState(generateOrderId());
   const [event, setEvent] = useState(null);
   const [cartItems, setCartItems] = useState([]);
+  const [voucherCode, setVoucherCode] = useState("");
   const [note, setNote] = useState("Ấn tiếp tục để thanh toán. Số lượng vé mang tính chất tham khảo.");
   const [paymentMethod, setPaymentMethod] = useState("");
   const [notification, setNotification] = useState(""); // ✅ new state
@@ -159,6 +160,7 @@ const RealtimeEventDetails = () => {
             })),
           paymentMethod,
           orderKey,
+          voucherCode: voucherCode.trim() || undefined,
         };
 
         const res = await axiosInstance.post(
@@ -216,12 +218,12 @@ const RealtimeEventDetails = () => {
           >
             ❮
           </button>
-          {event.eventName}
+          {event.title || event.eventName}
         </div>
 
         {event.sessions?.map((session, sIndex) => (
           <div key={sIndex} className="real-time-event-section">
-            <div className="real-time-event-place">📍{event.venueName}</div>
+            <div className="real-time-event-place">📍{event.location || event.venueName}</div>
             <div className="real-time-event-time">
               📅 {new Date(session.eventDate).toLocaleDateString("vi-VN")}⏰
               {new Date(session.startTime).toLocaleTimeString("vi-VN", {
@@ -309,6 +311,24 @@ const RealtimeEventDetails = () => {
               ))}
             </tbody>
           </table>
+          <div style={{ margin: "14px 0 6px 0" }}>
+            <input
+              type="text"
+              placeholder="Mã voucher (VD: CHAOHEXUAN2026, GIAM50K)"
+              value={voucherCode}
+              onChange={(e) => setVoucherCode(e.target.value.toUpperCase())}
+              style={{
+                width: "100%",
+                padding: "8px 12px",
+                borderRadius: "6px",
+                border: "1px solid #444",
+                background: "#1e1e1e",
+                color: "#fff",
+                fontSize: "13px",
+                boxSizing: "border-box",
+              }}
+            />
+          </div>
           <div className="real-time-event-total">
             Tổng: {grandTotal.toLocaleString()} ₫
           </div>

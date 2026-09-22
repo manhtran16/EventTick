@@ -97,8 +97,8 @@ const TrendingEvent = () => {
               <div className="trending-event-number-left">{index + 1}</div>
               <Link to={`/event/${item._id}`}>
                 <img
-                  src={item.backgroundImage}
-                  alt={item.eventName || `Carousel Item ${index + 1}`}
+                  src={item.bannerUrl || item.backgroundImage}
+                  alt={item.title || item.eventName || `Carousel Item ${index + 1}`}
                 />
               </Link>
             </div>

@@ -47,8 +47,8 @@ const EventItemCard = ({ events }) => {
               >
                 <img
                   className="item-card-image"
-                  src={item.backgroundImage}
-                  alt={item.eventName}
+                  src={item.bannerUrl || item.backgroundImage}
+                  alt={item.title || item.eventName}
                 />
                 {hasEnded && (
                   <span className="item-card-ended">Đã diễn ra</span>
@@ -57,7 +57,7 @@ const EventItemCard = ({ events }) => {
 
               <div className="item-card-details">
                 <Link to={`/event/${item._id}`} className="item-card-title">
-                  {item.eventName}
+                  {item.title || item.eventName}
                 </Link>
                 <p className="item-card-price">🎟 {formattedPrice}</p>
                 <p className="item-card-date">📅 {formattedDate}</p>

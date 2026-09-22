@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
+import { authService } from "@/services/auth.service";
 import { PATHS } from "@/routes/paths";
 import "./LoginPage.css";
 
@@ -10,6 +11,7 @@ const LoginPage = () => {
     password: "",
   });
   const [errorMessage, setErrorMessage] = useState("");
+  const [unverifiedEmail, setUnverifiedEmail] = useState("");
 
   const { login } = useAuth();
   const location = useLocation();
@@ -37,6 +39,9 @@ const LoginPage = () => {
       }
     } catch (err) {
       console.error("Login error:", err);
+      if (err.response?.data?.unverified) {
+        setUnverifiedEmail(err.response.data.email || "");
+      }
       if (err.response?.data?.message) {
         setErrorMessage(err.response.data.message);
       } else if (err.message) {
@@ -44,6 +49,16 @@ const LoginPage = () => {
       } else {
         setErrorMessage("Có lỗi xảy ra khi đăng nhập.");
       }
+    }
+  };
+
+  const handleResendVerification = async () => {
+    if (!unverifiedEmail) return;
+    try {
+      const res = await authService.resendVerification(unverifiedEmail);
+      alert(res?.message || "Đã gửi lại link kích hoạt! Vui lòng kiểm tra email.");
+    } catch (err) {
+      alert(err.response?.data?.message || "Không thể gửi lại email.");
     }
   };
 
@@ -77,9 +92,49 @@ const LoginPage = () => {
           onChange={handleChange}
           required
         />
+
+        <div style={{ textAlign: "right", margin: "4px 0 12px 0", fontSize: "13px" }}>
+          <Link to={PATHS.FORGOT_PASSWORD} style={{ color: "#4caf50", textDecoration: "none" }}>
+            Quên mật khẩu?
+          </Link>
+        </div>
+
         <button type="submit">Đăng nhập</button>
 
-        {errorMessage && <p className="error-message">{errorMessage}</p>}
+        {errorMessage && (
+          <div style={{ marginTop: "10px" }}>
+            <p className="error-message" style={{ color: "#d32f2f", fontSize: "13px", margin: "0" }}>
+              {errorMessage}
+            </p>
+            {unverifiedEmail && (
+              <button
+                type="button"
+                onClick={handleResendVerification}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#1976d2",
+                  padding: 0,
+                  fontSize: "13px",
+                  cursor: "pointer",
+                  marginTop: "6px",
+                  textDecoration: "underline",
+                  textAlign: "left",
+                  width: "auto",
+                }}
+              >
+                👉 Bấm vào đây để gửi lại email kích hoạt
+              </button>
+            )}
+          </div>
+        )}
+
+        <div style={{ marginTop: "15px", fontSize: "13px", textAlign: "center" }}>
+          Chưa có tài khoản?{" "}
+          <Link to={PATHS.REGISTER} style={{ color: "#4caf50", fontWeight: "bold", textDecoration: "none" }}>
+            Đăng ký ngay
+          </Link>
+        </div>
 
         <p className="home-link">
           <Link to={PATHS.HOME}>← Trở lại trang chủ</Link>

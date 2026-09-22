@@ -32,13 +32,13 @@ const EventDetails = () => {
 
   // --- Transformations ---
   // Event name
-  const eventName = event.eventName;
-  const backgroundImage = event.backgroundImage;
+  const eventName = event.title || event.eventName;
+  const backgroundImage = event.bannerUrl || event.backgroundImage;
   const priceFrom = event.lowestPrice;
 
   // Most recent session
   const recentSession =
-    event.sessions.length > 0
+    event.sessions && event.sessions.length > 0
       ? event.sessions[event.sessions.length - 1]
       : null;
 
@@ -68,10 +68,10 @@ const EventDetails = () => {
     )}, ${formatDate(recentSession.eventDate)}`;
 
   // Venue
-  const venue = event.venueName;
+  const venue = event.location || event.venueName;
 
   // Full description
-  const fullText = event.eventDesc || "";
+  const fullText = event.description || event.eventDesc || "";
   const cutText = fullText.substring(0, 70) + "...";
 
   // First session for schedule

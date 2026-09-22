@@ -7,5 +7,6 @@ router.post("/", requireAuth, ctrl.createBooking);
 router.post("/carts/:eventId", requireAuth, ctrl.createBooking);
 router.post("/create-payment-intent", ctrl.createPaymentIntent);
 router.get("/orders/auth/:orderId", ctrl.getOrder);
+router.post("/check-in", requireAuth, ctrl.checkInTicket);
 
 module.exports = router;

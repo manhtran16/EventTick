@@ -3,8 +3,10 @@
     "username": "demo_organizer",
     "email": "organizer@demo.com",
     "password": "123456",
-    "role": "admin",
+    "role": "ADMIN",
     "name": "Nguyễn Văn Tổ Chức",
+    "firstName": "Tổ Chức",
+    "lastName": "Nguyễn Văn",
     "phone": "0901234567",
     "gender": "Nam"
   },
@@ -12,9 +14,22 @@
     "username": "demo_user",
     "email": "user@demo.com",
     "password": "123456",
-    "role": "user",
+    "role": "CUSTOMER",
     "name": "Trần Thị Khách",
+    "firstName": "Khách",
+    "lastName": "Trần Thị",
     "phone": "0909876543",
     "gender": "Nữ"
+  },
+  {
+    "username": "demo_staff",
+    "email": "staff@demo.com",
+    "password": "123456",
+    "role": "STAFF",
+    "name": "Lê Văn Soát Vé",
+    "firstName": "Soát Vé",
+    "lastName": "Lê Văn",
+    "phone": "0908889999",
+    "gender": "Nam"
   }
 ]

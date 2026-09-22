@@ -101,8 +101,9 @@ const CreateEventPage = () => {
         withCredentials: true,
         headers: { "Content-Type": "multipart/form-data" },
       });
-      // redirect after success
-      navigate("/");
+      // notify user and redirect to My Events
+      alert("Tạo sự kiện thành công! Sự kiện của bạn đang ở trạng thái 'Chờ Admin duyệt'.");
+      navigate("/admin/my-events");
     } catch (err) {
       console.error("Error saving event:", err);
       setLoading(false); // hide loading if error
