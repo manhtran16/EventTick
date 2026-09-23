@@ -9,6 +9,9 @@ import HomePage from "@/pages/public/HomePage";
 import SearchResultsPage from "@/pages/public/SearchResultsPage";
 import LoginPage from "@/pages/auth/LoginPage";
 import RegisterPage from "@/pages/auth/RegisterPage";
+import VerifyEmailPage from "@/pages/auth/VerifyEmailPage";
+import ForgotPasswordPage from "@/pages/auth/ForgotPasswordPage";
+import ResetPasswordPage from "@/pages/auth/ResetPasswordPage";
 import EventDetailPage from "@/pages/events/EventDetailPage";
 import RealtimeEventDetailsPage from "@/pages/events/RealtimeEventDetailsPage";
 import CreateEventPage from "@/pages/admin/CreateEventPage";
@@ -41,6 +44,9 @@ const AppRoutes = () => {
       {/* Auth routes */}
       <Route path={PATHS.LOGIN} element={<LoginPage />} />
       <Route path={PATHS.REGISTER} element={<RegisterPage />} />
+      <Route path={PATHS.VERIFY_EMAIL} element={<VerifyEmailPage />} />
+      <Route path={PATHS.FORGOT_PASSWORD} element={<ForgotPasswordPage />} />
+      <Route path={PATHS.RESET_PASSWORD} element={<ResetPasswordPage />} />
 
       {/* Admin event creation protected route */}
       <Route element={<ProtectedRoute />}>

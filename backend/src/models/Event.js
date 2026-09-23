@@ -1,78 +1,165 @@
 const mongoose = require("mongoose");
 const { Schema } = mongoose;
 
-// Một loại vé trong 1 suất diễn, vd: "Vé Thường", "Vé VIP"
-const ticketSchema = new Schema(
-  {
-    name: { type: String, required: true },
-    price: { type: Number, required: true, min: 0 },
-    stock: { type: Number, required: true, min: 0 }, // tổng số vé loại này
-    sold: { type: Number, default: 0, min: 0 }, // số đã bán
-    remaining: { type: Number, min: 0 }, // số vé còn lại — dùng cho atomic check & decrement
-    minOrder: { type: Number, default: 1 },
-    desc: String,
-  },
-  { _id: true },
-);
+function slugify(text) {
+  if (!text) return "";
+  return text
+    .toString()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // remove accents
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
 
-// Một suất diễn (buổi diễn) của sự kiện
+// Subdocument Session (suất diễn)
 const sessionSchema = new Schema(
   {
+    name: { type: String, trim: true },
     eventDate: { type: Date, required: true },
     startTime: { type: Date, required: true },
-    tickets: [ticketSchema],
+    endTime: { type: Date },
   },
   { _id: true },
 );
 
 const eventSchema = new Schema(
   {
-    eventName: { type: String, required: true, trim: true },
-    eventDesc: String,
-    organizerInfo: String,
-    organizerName: String,
-    venueName: String,
-    eventAddress: String,
-    eventType: { type: String, enum: ["online", "offline"], default: "offline" },
+    organizerId: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
+    },
+    categoryId: {
+      type: Schema.Types.ObjectId,
+      ref: "Category",
+      index: true,
+    },
     category: { type: String, default: "Khác" },
 
-    backgroundImage: String, // ảnh banner lớn
-    eventImage: String, // ảnh thumbnail
+    title: { type: String, required: true, trim: true },
+    slug: { type: String, required: true, unique: true, lowercase: true, trim: true },
+    description: { type: String }, // HTML description
 
-    ownerId: { type: Schema.Types.ObjectId, ref: "User" }, // người tạo sự kiện
+    location: { type: String, required: true, trim: true },
+    bannerUrl: { type: String, required: true },
+    thumbnailUrl: { type: String },
+
+    organizerName: { type: String, trim: true },
+    organizerInfo: { type: String },
+    eventType: { type: String, enum: ["offline", "online"], default: "offline" },
+
+    sessions: {
+      type: [sessionSchema],
+      validate: {
+        validator: function (v) {
+          return Array.isArray(v) && v.length > 0;
+        },
+        message: "Sự kiện phải có ít nhất 1 suất diễn (session)",
+      },
+    },
+
+    status: {
+      type: String,
+      enum: [
+        "PENDING",
+        "APPROVED",
+        "REJECTED",
+        "CANCELLED",
+        "COMPLETED",
+        "pending",
+        "approved",
+        "rejected",
+      ],
+      default: "PENDING",
+      index: true,
+    },
+    rejectionReason: { type: String },
 
     isSpecial: { type: Boolean, default: false },
     isTrending: { type: Boolean, default: false },
 
-    sessions: [sessionSchema],
-
-    // 3 field dưới đây được TỰ ĐỘNG tính lại mỗi lần save (xem pre("save") bên dưới).
-    // Cache lại để query/sort nhanh (vd: EventDetails cần sort theo earliestDate)
-    // mà không phải tính toán lại từ mảng sessions mỗi lần.
     lowestPrice: { type: Number, default: 0 },
-    earliestDate: Date,
-    lastDate: Date,
+    earliestDate: { type: Date },
+    lastDate: { type: Date },
   },
-  { timestamps: true },
+  {
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
+  },
 );
 
-eventSchema.pre("save", function (next) {
-  for (const s of this.sessions || []) {
-    for (const t of s.tickets || []) {
-      if (t.remaining === undefined || t.remaining === null) {
-        t.remaining = Math.max(0, (t.stock || 0) - (t.sold || 0));
-      }
+// Indexes
+eventSchema.index({ status: 1, createdAt: -1 });
+
+// Virtual aliases for frontend backward compatibility
+eventSchema.virtual("eventName").get(function () {
+  return this.title;
+});
+eventSchema.virtual("eventDesc").get(function () {
+  return this.description;
+});
+eventSchema.virtual("venueName").get(function () {
+  return this.location;
+});
+eventSchema.virtual("eventAddress").get(function () {
+  return this.location;
+});
+eventSchema.virtual("backgroundImage").get(function () {
+  return this.bannerUrl;
+});
+eventSchema.virtual("eventImage").get(function () {
+  return this.thumbnailUrl || this.bannerUrl;
+});
+eventSchema.virtual("ownerId").get(function () {
+  return this.organizerId;
+});
+
+// Pre-validation / Pre-save hooks
+eventSchema.pre("validate", function (next) {
+  // Support legacy field names during assignment
+  if (!this.title && this.get("eventName")) {
+    this.title = this.get("eventName");
+  }
+  if (!this.location && (this.get("venueName") || this.get("eventAddress"))) {
+    this.location = this.get("venueName") || this.get("eventAddress");
+  }
+  if (!this.bannerUrl && this.get("backgroundImage")) {
+    this.bannerUrl = this.get("backgroundImage");
+  }
+  if (!this.thumbnailUrl && this.get("eventImage")) {
+    this.thumbnailUrl = this.get("eventImage");
+  }
+  if (!this.organizerId && this.get("ownerId")) {
+    this.organizerId = this.get("ownerId");
+  }
+  if (!this.description && this.get("eventDesc")) {
+    this.description = this.get("eventDesc");
+  }
+
+  // Auto-generate slug if missing
+  if (!this.slug && this.title) {
+    const baseSlug = slugify(this.title);
+    const suffix = (this._id || Date.now()).toString().slice(-6);
+    this.slug = `${baseSlug}-${suffix}`;
+  }
+
+  // Normalize status
+  if (this.status) {
+    this.status = this.status.toUpperCase();
+  }
+
+  // Compute earliestDate & lastDate
+  if (this.sessions && this.sessions.length > 0) {
+    const dates = this.sessions.map((s) => new Date(s.eventDate).getTime()).filter(Boolean);
+    if (dates.length) {
+      this.earliestDate = new Date(Math.min(...dates));
+      this.lastDate = new Date(Math.max(...dates));
     }
   }
 
-  const allTickets = this.sessions.flatMap((s) => s.tickets);
-  this.lowestPrice = allTickets.length ? Math.min(...allTickets.map((t) => t.price)) : 0;
-
-  const dates = this.sessions.map((s) => s.eventDate).filter(Boolean);
-  if (dates.length) {
-    this.earliestDate = new Date(Math.min(...dates.map((d) => d.getTime())));
-    this.lastDate = new Date(Math.max(...dates.map((d) => d.getTime())));
-  }
   next();
 });
 

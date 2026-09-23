@@ -59,17 +59,23 @@ const MyTicketPage = () => {
           <table border="1" cellPadding="8" className="ticket-table">
             <thead>
               <tr>
-                <th>Event</th>
-                <th>Ticket Name</th>
-                <th>Price (VND)</th>
-                <th>Quantity</th>
-                <th>Status</th>
-                <th>Purchase Date</th>
+                <th>Mã vé</th>
+                <th>Sự kiện</th>
+                <th>Hạng vé</th>
+                <th>Giá vé</th>
+                <th>Số lượng</th>
+                <th>Trạng thái</th>
+                <th>Ngày mua</th>
               </tr>
             </thead>
             <tbody>
               {tickets.map((ticket, index) => (
                 <tr key={index}>
+                  <td>
+                    <code style={{ background: "#2a2a2a", padding: "3px 6px", borderRadius: "4px", color: "#4ade80", fontWeight: "bold" }}>
+                      {ticket.ticketCode || "—"}
+                    </code>
+                  </td>
                   <td>
                     <Link
                       style={{ textDecoration: "none", color: "#ffffff" }}
@@ -81,7 +87,14 @@ const MyTicketPage = () => {
                   <td>{ticket.ticketName}</td>
                   <td>{Number(ticket.ticketPrice).toLocaleString()} ₫</td>
                   <td>{ticket.quantity}</td>
-                  <td>{ticket.status}</td>
+                  <td>
+                    <span style={{
+                      color: ticket.rawStatus === "UNUSED" || ticket.status === "Chưa sử dụng" ? "#4ade80" : "#fbbf24",
+                      fontWeight: 500
+                    }}>
+                      {ticket.status}
+                    </span>
+                  </td>
                   <td>{new Date(ticket.purchaseDate).toLocaleString()}</td>
                 </tr>
               ))}

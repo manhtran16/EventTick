@@ -66,11 +66,11 @@ const ForYou = () => {
           {events.map((event) => (
             <div className="for-you-carousel-item" key={event._id}>
               <Link to={`/event/${event._id}`}>
-                <img src={event.backgroundImage} alt={event.eventName} />
+                <img src={event.bannerUrl || event.backgroundImage} alt={event.title || event.eventName} />
               </Link>
 
               <div className="for-you-poster-details">
-                <p className="for-you-title">{event.eventName}</p>
+                <p className="for-you-title">{event.title || event.eventName}</p>
                 <p className="for-you-price">
                   🎟 Từ{" "}
                   {new Intl.NumberFormat("vi-VN", {

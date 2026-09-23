@@ -84,7 +84,7 @@ const BannerSection = () => {
         <div className="a-carousel-track">
           {events.map((item, idx) => (
             <div className="a-carousel-item" key={idx}>
-              <img src={item.backgroundImage} alt={item.eventName || "Event"} />
+              <img src={item.bannerUrl || item.backgroundImage} alt={item.title || item.eventName || "Event"} />
               <Link to={`/event/${item._id}`}>
                 <button className="a-carousel-button">Xem chi tiết</button>
               </Link>
