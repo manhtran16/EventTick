@@ -17,8 +17,13 @@ router.get("/my-event", requireAuth, ctrl.myEvents);
 router.post("/", requireAuth, upload.any(), ctrl.create);
 
 // Admin duyệt/từ chối sự kiện
+router.get("/admin/pending", requireAuth, ctrl.getPendingEvents);
 router.put("/:id/approve", requireAuth, ctrl.approve);
 router.put("/:id/reject", requireAuth, ctrl.reject);
+
+// Cập nhật sự kiện và Xóa sự kiện
+router.put("/:id", requireAuth, upload.any(), ctrl.update);
+router.delete("/:id", requireAuth, ctrl.deleteEvent);
 
 // Chi tiết sự kiện theo ID
 router.get("/:id", ctrl.getById);

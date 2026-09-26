@@ -37,11 +37,8 @@ export const eventService = {
     return res.data;
   },
 
-  // Search events by query name or category
-  async searchEvents({ name, category }) {
-    const params = {};
-    if (name) params.name = name;
-    if (category) params.category = category;
+  // Search events with multi-criteria, pagination, sorting
+  async searchEvents(params) {
     const res = await apiClient.get("/events/search", { params });
     return res.data;
   },

@@ -126,21 +126,73 @@ exports.latest = async (req, res) => {
   res.json({ success: true, events: events.map(toClientEventSimple) });
 };
 
-// GET /events/search?name=&category= (SearchResultsPage.jsx)
+// GET /events/search?name=&category=&eventType=&priceMin=&priceMax=&sort=&page=&limit= (SearchResultsPage.jsx)
 exports.search = async (req, res) => {
-  const { name, category } = req.query;
-  const filter = { status: { $in: ["APPROVED", "approved"] } };
-  if (name) {
-    filter.$or = [
-      { title: { $regex: name, $options: "i" } },
-      { slug: { $regex: name, $options: "i" } },
-    ];
-  } else if (category) {
-    filter.category = category;
-  }
+  try {
+    const {
+      name,
+      category,
+      eventType,
+      priceMin,
+      priceMax,
+      sort,
+      page = 1,
+      limit = 12,
+    } = req.query;
 
-  const events = await Event.find(filter).limit(50);
-  res.json({ events: events.map(toClientEventSimple) });
+    const filter = { status: { $in: ["APPROVED", "approved"] } };
+
+    // 1. Keyword search (Name, Slug, Location)
+    if (name) {
+      filter.$or = [
+        { title: { $regex: name, $options: "i" } },
+        { slug: { $regex: name, $options: "i" } },
+        { location: { $regex: name, $options: "i" } },
+      ];
+    }
+
+    // 2. Exact match filters
+    if (category) filter.category = category;
+    if (eventType) filter.eventType = eventType;
+
+    // 3. Price range filter
+    if (priceMin || priceMax) {
+      filter.lowestPrice = {};
+      if (priceMin) filter.lowestPrice.$gte = Number(priceMin);
+      if (priceMax) filter.lowestPrice.$lte = Number(priceMax);
+    }
+
+    // 4. Pagination
+    const pageNumber = parseInt(page, 10) || 1;
+    const pageSize = parseInt(limit, 10) || 12;
+    const skip = (pageNumber - 1) * pageSize;
+
+    // 5. Sorting
+    let sortObj = { createdAt: -1 }; // Mặc định mới nhất
+    if (sort === "price_asc") sortObj = { lowestPrice: 1 };
+    else if (sort === "price_desc") sortObj = { lowestPrice: -1 };
+    else if (sort === "date_asc") sortObj = { earliestDate: 1 };
+    else if (sort === "date_desc") sortObj = { earliestDate: -1 };
+
+    const totalEvents = await Event.countDocuments(filter);
+    const events = await Event.find(filter)
+      .sort(sortObj)
+      .skip(skip)
+      .limit(pageSize);
+
+    res.json({
+      success: true,
+      events: events.map(toClientEventSimple),
+      pagination: {
+        total: totalEvents,
+        page: pageNumber,
+        limit: pageSize,
+        totalPages: Math.ceil(totalEvents / pageSize),
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
 };
 
 // GET /events/my-event (MyEventPage.jsx — bất kỳ user nào đăng nhập đều xem được sự kiện mình tạo)
@@ -220,6 +272,8 @@ exports.create = async (req, res) => {
       eventType: payload.eventType || "offline",
       sessions: sessionsToInsert,
       status: "PENDING",
+      allowResale: payload.allowResale || false,
+      allowGift: payload.allowGift || false,
     });
 
     await event.save();
@@ -280,9 +334,21 @@ exports.create = async (req, res) => {
   }
 };
 
+// GET /events/admin/pending (Lấy danh sách sự kiện chờ duyệt - Chỉ Admin)
+exports.getPendingEvents = async (req, res) => {
+  try {
+    if (req.user.role !== "ADMIN") return res.status(403).json({ success: false, message: "Chỉ Admin mới có quyền xem" });
+    const events = await Event.find({ status: "PENDING" }).populate("organizerId", "username email fullName").sort({ createdAt: -1 });
+    res.json({ success: true, events });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 // PUT /events/:id/approve (Admin duyệt sự kiện)
 exports.approve = async (req, res) => {
   try {
+    if (req.user.role !== "ADMIN") return res.status(403).json({ success: false, message: "Chỉ Admin mới có quyền duyệt sự kiện" });
     const event = await Event.findByIdAndUpdate(
       req.params.id,
       { status: "APPROVED", rejectionReason: null },
@@ -298,6 +364,7 @@ exports.approve = async (req, res) => {
 // PUT /events/:id/reject (Admin từ chối sự kiện)
 exports.reject = async (req, res) => {
   try {
+    if (req.user.role !== "ADMIN") return res.status(403).json({ success: false, message: "Chỉ Admin mới có quyền từ chối sự kiện" });
     const { reason } = req.body;
     const event = await Event.findByIdAndUpdate(
       req.params.id,
@@ -306,6 +373,64 @@ exports.reject = async (req, res) => {
     );
     if (!event) return res.status(404).json({ success: false, message: "Không tìm thấy sự kiện" });
     res.json({ success: true, message: "Đã từ chối sự kiện", event });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// PUT /events/:id (Cập nhật sự kiện)
+exports.update = async (req, res) => {
+  try {
+    const event = await Event.findById(req.params.id);
+    if (!event) return res.status(404).json({ success: false, message: "Không tìm thấy sự kiện" });
+    
+    if (event.organizerId.toString() !== req.user.id && req.user.role !== "ADMIN") {
+      return res.status(403).json({ success: false, message: "Không có quyền cập nhật sự kiện này" });
+    }
+
+    const payload = JSON.parse(req.body.data || "{}");
+    const files = Array.isArray(req.files) ? req.files : Object.values(req.files || {}).flat();
+    const backgroundFile = files.find((f) => f.fieldname === "backgroundImage");
+    const eventFile = files.find((f) => f.fieldname === "eventImage");
+
+    if (payload.title || payload.eventName) event.title = payload.title || payload.eventName;
+    if (payload.category) event.category = payload.category;
+    if (payload.description || payload.eventDesc) event.description = payload.description || payload.eventDesc;
+    if (payload.location || payload.venueName || payload.eventAddress) event.location = payload.location || payload.venueName || payload.eventAddress;
+    if (payload.organizerName) event.organizerName = payload.organizerName;
+    if (payload.organizerInfo) event.organizerInfo = payload.organizerInfo;
+    if (payload.eventType) event.eventType = payload.eventType;
+    if (payload.allowResale !== undefined) event.allowResale = payload.allowResale;
+    if (payload.allowGift !== undefined) event.allowGift = payload.allowGift;
+    
+    if (backgroundFile) {
+      event.bannerUrl = await saveUploadedFile(req, backgroundFile);
+    }
+    if (eventFile) {
+      event.thumbnailUrl = await saveUploadedFile(req, eventFile);
+    }
+
+    await event.save();
+    res.json({ success: true, message: "Cập nhật sự kiện thành công", event });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// DELETE /events/:id (Xóa sự kiện)
+exports.deleteEvent = async (req, res) => {
+  try {
+    const event = await Event.findById(req.params.id);
+    if (!event) return res.status(404).json({ success: false, message: "Không tìm thấy sự kiện" });
+    
+    if (event.organizerId.toString() !== req.user.id && req.user.role !== "ADMIN") {
+      return res.status(403).json({ success: false, message: "Không có quyền xóa sự kiện này" });
+    }
+
+    await Event.findByIdAndDelete(req.params.id);
+    await Zone.deleteMany({ eventId: req.params.id });
+
+    res.json({ success: true, message: "Đã xóa sự kiện thành công" });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

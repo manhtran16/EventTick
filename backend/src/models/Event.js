@@ -83,6 +83,10 @@ const eventSchema = new Schema(
     lowestPrice: { type: Number, default: 0 },
     earliestDate: { type: Date },
     lastDate: { type: Date },
+
+    // Policy
+    allowResale: { type: Boolean, default: false },
+    allowGift: { type: Boolean, default: false },
   },
   {
     timestamps: true,
