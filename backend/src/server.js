@@ -40,10 +40,15 @@ app.use(attachUser);
 // Toàn bộ route đặt dưới tiền tố /v1 để KHỚP với front-end/src/lib/axios.js
 // (baseURL: http://localhost:3000/v1) — không cần sửa gì bên front-end.
 const eventCtrl = require("./controllers/eventController");
+const userRoutes = require("./routes/userRoutes");
+
 app.use("/v1/auth", authRoutes);
 app.use("/v1/events", eventRoutes);
 app.use("/v1/booking", bookingRoutes);
 app.get("/v1/seats/:id", eventCtrl.getById);
+
+// Thêm API mới theo yêu cầu
+app.use("/api/users", userRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ success: false, message: "Không tìm thấy endpoint này" });
