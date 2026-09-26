@@ -234,9 +234,9 @@ exports.updateProfile = async (req, res) => {
     if (firstName !== undefined) updateData.firstName = firstName;
     if (lastName !== undefined) updateData.lastName = lastName;
     if (name !== undefined) {
-      updateData.name = name;
+      updateData.fullName = name;
     } else if (firstName !== undefined || lastName !== undefined) {
-      updateData.name = [lastName, firstName].filter(Boolean).join(" ");
+      updateData.fullName = [lastName, firstName].filter(Boolean).join(" ");
     }
     await User.findByIdAndUpdate(req.user.id, updateData);
     res.json({ success: true, message: "Cập nhật hồ sơ thành công" });
