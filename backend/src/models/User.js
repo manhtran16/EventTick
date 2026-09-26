@@ -26,6 +26,7 @@ const userSchema = new Schema(
     passwordHash: { type: String, required: true },
     phone: { type: String, trim: true },
     avatarUrl: { type: String },
+    followersCount: { type: Number, default: 0 },
     gender: { type: String },
     dob: { type: Date },
 

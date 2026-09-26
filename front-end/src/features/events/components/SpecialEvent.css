@@ -1,13 +1,14 @@
-.special-event-text{
-  margin-left: 165px;
-  font-size: large;
+.special-event-text {
+  font-size: 20px;
   font-weight: bold;
   color: white;
+  margin-bottom: 20px;
 }
 .special-event-carousel-wrapper {
   position: relative;
   max-width: 1200px;
   margin: 30px auto;
+  padding: 0 10px;
   overflow: hidden;
 }
 
@@ -17,8 +18,8 @@
 }
 
 .special-event-carousel-item {
-  flex: 0 0 calc(20% - 10px); /* subtract margin so 5 fit in a row */
-  margin: 0 5px;              /* horizontal spacing between items */
+  flex: 0 0 calc(25% - 15px); /* 4 items per row */
+  margin: 0 7.5px;
   box-sizing: border-box;
 }
 

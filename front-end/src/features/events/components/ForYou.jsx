@@ -59,9 +59,8 @@ const ForYou = () => {
 
   return (
     <>
-      <p className="for-you-text"> Dành cho bạn</p>
-
       <div className="for-you-carousel-wrapper">
+        <p className="for-you-text"> Dành cho bạn</p>
         <div className="for-you-carousel-track">
           {events.map((event) => (
             <div className="for-you-carousel-item" key={event._id}>

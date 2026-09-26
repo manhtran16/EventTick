@@ -205,6 +205,30 @@ exports.me = async (req, res) => {
   });
 };
 
+// GET /api/users/top-stars -> Lấy danh sách 8 user có lượt followersCount cao nhất
+exports.getTopStars = async (req, res) => {
+  try {
+    const stars = await User.find({})
+      .sort({ followersCount: -1, createdAt: -1 }) // ưu tiên follower, sau đó đến mới tạo
+      .limit(8)
+      .select("username name fullName avatarUrl followersCount isEmailVerified");
+    
+    // Format data
+    const formattedStars = stars.map(user => ({
+      _id: user._id,
+      name: user.fullName || user.name || user.username,
+      image: user.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.fullName || user.username)}&background=random`,
+      followers: user.followersCount || 0,
+      isVerified: user.isEmailVerified
+    }));
+
+    res.json({ success: true, data: formattedStars });
+  } catch (err) {
+    console.error("getTopStars error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 // GET /auth/user  -> AccountPage.jsx dùng để lấy thông tin chi tiết (yêu cầu đăng nhập)
 exports.getProfile = async (req, res) => {
   const user = await User.findById(req.user.id);

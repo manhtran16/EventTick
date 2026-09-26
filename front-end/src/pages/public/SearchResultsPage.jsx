@@ -30,7 +30,7 @@ const SearchResultsPage = () => {
     sort: "createdAt_desc"
   });
 
-  // Sync state with URL initially
+  // Sync state with URL only on mount (so user can share links)
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     setFilters({
@@ -41,7 +41,8 @@ const SearchResultsPage = () => {
       priceMax: params.get("priceMax") || "",
       sort: params.get("sort") || "createdAt_desc"
     });
-  }, [location.search]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run once on mount
 
   // Fetch events based on current URL params
   const fetchEvents = useCallback(async (pageToFetch = 1) => {
@@ -80,18 +81,26 @@ const SearchResultsPage = () => {
     fetchEvents(currentPage);
   }, [fetchEvents, location.search]);
 
+  // Auto-apply filters when local 'filters' state changes (with 500ms debounce)
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value) params.set(key, value);
+      });
+      // Preserve current page or reset to 1 if it's a new filter search?
+      // Since filters changed, reset to page 1
+      params.set("page", "1");
+      // Use replace: true so we don't spam the browser history on every keystroke
+      navigate(`/search?${params.toString()}`, { replace: true });
+    }, 500);
+
+    return () => clearTimeout(handler);
+  }, [filters, navigate]);
+
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
     setFilters(prev => ({ ...prev, [name]: value }));
-  };
-
-  const applyFilters = () => {
-    const params = new URLSearchParams();
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value) params.set(key, value);
-    });
-    params.set("page", "1"); // Reset to page 1 on filter
-    navigate(`/search?${params.toString()}`);
   };
 
   const handlePageChange = (newPage) => {
@@ -102,8 +111,9 @@ const SearchResultsPage = () => {
   };
 
   const clearFilters = () => {
-    setFilters({ name: "", category: "", eventType: "", priceMin: "", priceMax: "", sort: "createdAt_desc" });
-    navigate("/search");
+    const defaultFilters = { name: "", category: "", eventType: "", priceMin: "", priceMax: "", sort: "createdAt_desc" };
+    setFilters(defaultFilters);
+    // The debounce useEffect will automatically trigger the navigation
   };
 
   return (
@@ -154,12 +164,7 @@ const SearchResultsPage = () => {
           </select>
         </div>
 
-        <button 
-          onClick={applyFilters}
-          style={{ width: "100%", padding: "12px", background: "#f7a800", color: "#000", border: "none", borderRadius: "4px", fontWeight: "bold", cursor: "pointer", marginBottom: "10px" }}
-        >
-          Áp dụng
-        </button>
+
         <button 
           onClick={clearFilters}
           style={{ width: "100%", padding: "12px", background: "#333", color: "#fff", border: "none", borderRadius: "4px", cursor: "pointer" }}
@@ -179,13 +184,7 @@ const SearchResultsPage = () => {
           <p>Đang tìm kiếm...</p>
         ) : events.length > 0 ? (
           <>
-            <div className="search-results-grid">
-              {events.map((event, index) => (
-                <div key={event._id || index}>
-                  <EventItemCard events={[event]} />
-                </div>
-              ))}
-            </div>
+            <EventItemCard events={events} title={null} />
             
             {/* PAGINATION */}
             {pagination.totalPages > 1 && (

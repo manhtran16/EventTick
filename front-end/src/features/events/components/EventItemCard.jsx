@@ -2,13 +2,13 @@ import React from "react";
 import "./EventItemCard.css";
 import { Link } from "react-router-dom";
 
-const EventItemCard = ({ events }) => {
+const EventItemCard = ({ events, title = "Kết quả tìm kiếm" }) => {
   const today = new Date();
   today.setHours(0, 0, 0, 0); // normalize today
 
   return (
     <div className="item-card-wrapper">
-      <p className="item-card-text">Kết quả tìm kiếm</p>
+      {title && <p className="item-card-text">{title}</p>}
       <div className="item-card-grid">
         {events.map((item) => {
           // Format price

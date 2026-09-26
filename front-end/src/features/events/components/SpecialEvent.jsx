@@ -82,8 +82,8 @@ const SpecialEvent = () => {
 
   return (
     <>
-      <p className="special-event-text"> Sự kiện đặc biệt </p>
       <div className="special-event-carousel-wrapper">
+        <p className="special-event-text">Sự kiện đặc biệt</p>
         <div className="special-event-carousel-track">
           {events.map((item, index) => (
             <div className="special-event-carousel-item" key={index}>

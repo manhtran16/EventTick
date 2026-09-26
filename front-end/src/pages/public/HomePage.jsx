@@ -1,6 +1,7 @@
 import React from "react";
 import {
   BannerSection,
+  FeaturedStars,
   SpecialEvent,
   TrendingEvent,
   ForYou,
@@ -11,6 +12,7 @@ const HomePage = () => {
   return (
     <>
       <BannerSection />
+      <FeaturedStars />
       <SpecialEvent />
       <TrendingEvent />
       <ForYou />

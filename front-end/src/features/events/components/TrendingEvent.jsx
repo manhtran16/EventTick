@@ -89,8 +89,8 @@ const TrendingEvent = () => {
 
   return (
     <>
-      <p className="trending-event-text">Sự kiện xu hướng</p>
       <div className="trending-event-carousel-wrapper">
+        <p className="trending-event-text">Sự kiện xu hướng</p>
         <div className="trending-event-carousel-track">
           {events.map((item, index) => (
             <div className="trending-event-carousel-item" key={item._id}>

@@ -1,14 +1,14 @@
-.trending-event-text{
-  margin-left: 165px;
-  font-size: large;
+.trending-event-text {
+  font-size: 20px;
   font-weight: bold;
   color: white;
-  margin-bottom: 0;
+  margin-bottom: 20px;
 }
 .trending-event-carousel-wrapper {
   position: relative;
   max-width: 1200px;
-  margin: auto;
+  margin: 30px auto;
+  padding: 0 10px;
   overflow: hidden;
 }
 
@@ -21,7 +21,7 @@
   position: relative;
   flex: 0 0 calc(100% / 3.5);
   max-width: calc(100% / 3.5);
-  padding: 33px;
+  padding: 0 15px; /* Sửa thành padding ngang thay vì padding tứ phía */
   box-sizing: border-box;
 }
 
