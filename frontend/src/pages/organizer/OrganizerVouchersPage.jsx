@@ -13,10 +13,24 @@ import {
   PauseCircle,
   PlayCircle,
   Percent,
+  Calendar,
 } from 'lucide-react';
 import api from '../../api/client';
 import { useToast } from '../../context/ToastContext';
 import { PATHS } from '../../routes/paths';
+
+const fmtDate = (d) => {
+  if (!d) return '—';
+  const date = new Date(d);
+  if (isNaN(date.getTime())) return '—';
+  return date.toLocaleString('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
 
 export default function OrganizerVouchersPage() {
   const { eventId } = useParams();
@@ -33,7 +47,7 @@ export default function OrganizerVouchersPage() {
     code: '',
     discountType: 'PERCENT',
     discountValue: '10',
-    maxDiscountAmount: '100000',
+    maxDiscountAmount: '',
     minOrderAmount: '0',
     usageLimit: '100',
     maxPerUser: '1',
@@ -75,7 +89,10 @@ export default function OrganizerVouchersPage() {
         code: formData.code.trim().toUpperCase(),
         discountType: formData.discountType,
         discountValue: Number(formData.discountValue),
-        maxDiscountAmount: formData.maxDiscountAmount ? Number(formData.maxDiscountAmount) : undefined,
+        maxDiscountAmount:
+          formData.discountType === 'PERCENT' && formData.maxDiscountAmount && Number(formData.maxDiscountAmount) > 0
+            ? Number(formData.maxDiscountAmount)
+            : undefined,
         minOrderAmount: Number(formData.minOrderAmount || 0),
         usageLimit: Number(formData.usageLimit || 100),
         maxPerUser: Number(formData.maxPerUser || 1),
@@ -185,6 +202,7 @@ export default function OrganizerVouchersPage() {
                 <tr className='border-b border-[#e4e4e7] text-[#71717a] uppercase text-[11px]'>
                   <th className='py-3 px-3'>Mã Voucher</th>
                   <th className='py-3 px-3'>Mức giảm</th>
+                  <th className='py-3 px-3'>Thời gian áp dụng</th>
                   <th className='py-3 px-3'>Lượt dùng</th>
                   <th className='py-3 px-3 text-right'>Doanh thu ROI</th>
                   <th className='py-3 px-3 text-center'>Trạng thái</th>
@@ -192,57 +210,94 @@ export default function OrganizerVouchersPage() {
                 </tr>
               </thead>
               <tbody className='divide-y divide-[#f4f4f6]'>
-                {vouchers.map((v) => (
-                  <tr key={v._id}>
-                    <td className='py-3.5 px-3'>
-                      <div className='font-mono font-bold text-sm text-[#09090b]'>{v.code}</div>
-                      <div className='text-[11px] text-[#71717a]'>
-                        Đơn tối thiểu: {(v.minOrderAmount || 0).toLocaleString('vi-VN')} ₫
-                      </div>
-                    </td>
+                {vouchers.map((v) => {
+                  const isExpired = v.validUntil && new Date(v.validUntil) < new Date();
+                  const notStarted = v.validFrom && new Date(v.validFrom) > new Date();
 
-                    <td className='py-3.5 px-3 font-semibold text-[#09090b]'>
-                      {v.discountType === 'PERCENT'
-                        ? `Giảm ${v.discountValue}%`
-                        : `Giảm ${(v.discountValue || 0).toLocaleString('vi-VN')} ₫`}
-                      {v.maxDiscountAmount && v.discountType === 'PERCENT' && (
-                        <div className='text-[10px] text-[#71717a] font-normal'>
-                          Tối đa {v.maxDiscountAmount.toLocaleString('vi-VN')} ₫
+                  return (
+                    <tr key={v._id}>
+                      <td className='py-3.5 px-3'>
+                        <div className='font-mono font-bold text-sm text-[#09090b]'>{v.code}</div>
+                        <div className='text-[11px] text-[#71717a]'>
+                          Đơn tối thiểu: {(v.minOrderAmount || 0).toLocaleString('vi-VN')} ₫
                         </div>
-                      )}
-                    </td>
+                      </td>
 
-                    <td className='py-3.5 px-3'>
-                      <div className='font-bold text-[#09090b]'>
-                        {v.usedCount || 0} / {v.usageLimit}
-                      </div>
-                      <div className='w-24 h-1.5 bg-[#f4f4f6] rounded-full mt-1 overflow-hidden'>
-                        <div
-                          className='h-full bg-[#09090b]'
-                          style={{ width: `${Math.min(100, v.stats?.usageRatePct || 0)}%` }}
-                        />
-                      </div>
-                    </td>
+                      <td className='py-3.5 px-3 font-semibold text-[#09090b]'>
+                        {v.discountType === 'PERCENT'
+                          ? `Giảm ${v.discountValue}%`
+                          : `Giảm ${(v.discountValue || 0).toLocaleString('vi-VN')} ₫`}
+                        {v.maxDiscountAmount && v.discountType === 'PERCENT' && (
+                          <div className='text-[10px] text-[#71717a] font-normal'>
+                            Tối đa {v.maxDiscountAmount.toLocaleString('vi-VN')} ₫
+                          </div>
+                        )}
+                      </td>
 
-                    <td className='py-3.5 px-3 text-right'>
-                      <div className='font-bold text-[#09090b]'>
-                        {(v.stats?.netRevenueGenerated || 0).toLocaleString('vi-VN')} ₫
-                      </div>
-                      <div className='text-[10px] text-[#71717a]'>
-                        {v.stats?.paidOrdersCount || 0} đơn thành công
-                      </div>
-                    </td>
+                      <td className='py-3.5 px-3'>
+                        <div className='space-y-0.5 text-[11px] min-w-[170px]'>
+                          <div className='text-[#09090b] flex items-center gap-1.5'>
+                            <Calendar size={12} className='text-[#71717a] shrink-0' />
+                            <span>{fmtDate(v.validFrom)}</span>
+                          </div>
+                          <div className='text-[#71717a] pl-4 text-[10px]'>
+                            đến <span className='text-[#09090b] font-medium'>{fmtDate(v.validUntil)}</span>
+                          </div>
+                          <div className='pl-4 mt-0.5'>
+                            {isExpired ? (
+                              <span className='inline-block text-[10px] text-red-600 font-semibold'>
+                                • Đã hết hạn
+                              </span>
+                            ) : notStarted ? (
+                              <span className='inline-block text-[10px] text-amber-600 font-semibold'>
+                                • Chưa bắt đầu
+                              </span>
+                            ) : (
+                              <span className='inline-block text-[10px] text-emerald-600 font-semibold'>
+                                • Đang áp dụng
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
 
-                    <td className='py-3.5 px-3 text-center'>
-                      <span
-                        className={`px-2.5 py-0.5 rounded-full font-bold text-[10px] ${
-                          v.isActive
-                            ? 'bg-[#09090b] text-white'
-                            : 'bg-[#f4f4f6] text-[#52525b] border border-[#e4e4e7]'
-                        }`}>
-                        {v.isActive ? 'Đang chạy' : 'Tạm ngưng'}
-                      </span>
-                    </td>
+                      <td className='py-3.5 px-3'>
+                        <div className='font-bold text-[#09090b]'>
+                          {v.usedCount || 0} / {v.usageLimit}
+                        </div>
+                        <div className='w-24 h-1.5 bg-[#f4f4f6] rounded-full mt-1 overflow-hidden'>
+                          <div
+                            className='h-full bg-[#09090b]'
+                            style={{ width: `${Math.min(100, v.stats?.usageRatePct || 0)}%` }}
+                          />
+                        </div>
+                      </td>
+
+                      <td className='py-3.5 px-3 text-right'>
+                        <div className='font-bold text-[#09090b]'>
+                          {(v.stats?.netRevenueGenerated || 0).toLocaleString('vi-VN')} ₫
+                        </div>
+                        <div className='text-[10px] text-[#71717a]'>
+                          {v.stats?.paidOrdersCount || 0} đơn thành công
+                        </div>
+                      </td>
+
+                      <td className='py-3.5 px-3 text-center'>
+                        {isExpired ? (
+                          <span className='px-2.5 py-0.5 rounded-full font-bold text-[10px] bg-red-50 text-red-700 border border-red-200'>
+                            Hết hạn
+                          </span>
+                        ) : (
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full font-bold text-[10px] ${
+                              v.isActive
+                                ? 'bg-[#09090b] text-white'
+                                : 'bg-[#f4f4f6] text-[#52525b] border border-[#e4e4e7]'
+                            }`}>
+                            {v.isActive ? 'Đang chạy' : 'Tạm ngưng'}
+                          </span>
+                        )}
+                      </td>
 
                     <td className='py-3.5 px-3 text-right'>
                       <button
@@ -263,7 +318,8 @@ export default function OrganizerVouchersPage() {
                       </button>
                     </td>
                   </tr>
-                ))}
+                );
+              })}
               </tbody>
             </table>
           </div>
@@ -327,6 +383,22 @@ export default function OrganizerVouchersPage() {
                   />
                 </div>
               </div>
+
+              {formData.discountType === 'PERCENT' && (
+                <div className='space-y-1'>
+                  <label className='font-semibold text-[#09090b]'>
+                    Số tiền giảm tối đa (đ) <span className='text-[#71717a] font-normal'>(bỏ trống nếu không giới hạn)</span>
+                  </label>
+                  <input
+                    type='number'
+                    min={0}
+                    value={formData.maxDiscountAmount}
+                    onChange={(e) => setFormData({ ...formData, maxDiscountAmount: e.target.value })}
+                    placeholder='VD: 100000'
+                    className='w-full px-3 py-2 border border-[#e4e4e7] rounded-xl outline-none focus:border-[#09090b]'
+                  />
+                </div>
+              )}
 
               <div className='grid grid-cols-2 gap-3'>
                 <div className='space-y-1'>
