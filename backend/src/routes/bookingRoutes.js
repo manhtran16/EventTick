@@ -3,6 +3,7 @@ const ctrl = require("../controllers/bookingController");
 const { requireAuth } = require("../middleware/auth");
 
 router.get("/user/tickets", requireAuth, ctrl.myTickets);
+router.get("/tickets/:id/status", requireAuth, ctrl.getTicketStatus);
 router.post("/", requireAuth, ctrl.createBooking);
 router.post("/voucher-preview", requireAuth, ctrl.previewVoucher);
 router.post("/carts/:eventId", requireAuth, ctrl.createBooking);

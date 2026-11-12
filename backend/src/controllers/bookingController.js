@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const { Order, Ticket, StaffAssignment, RefundRequest, TicketTier, Event, EventSession, Seat, Payment, ResaleListing } = require("../models");
 const bookingService = require("../services/bookingService");
 const { audit } = require("../utils/audit");
@@ -316,10 +317,14 @@ exports.checkInTicket = async (req, res) => {
     if (!code) return res.status(400).json({ success: false, message: "Thiếu mã vé QR" });
 
     const targetEventId = req.body?.eventId ? String(req.body.eventId).trim() : null;
+    const targetSessionId = req.body?.sessionId ? String(req.body.sessionId).trim() : null;
 
     const ticket = await Ticket.findOne({ ticket_code: code })
       .populate("event_id", "title venue_name organizer_id")
-      .populate("tier_id", "name");
+      .populate("session_id", "name start_time end_time status")
+      .populate("tier_id", "name")
+      .populate("seat_id", "section_name row_label seat_number")
+      .populate("owner_id", "full_name username email phone");
     if (!ticket) return res.status(404).json({ success: false, message: "Mã vé không hợp lệ" });
 
     // Xác thực chữ ký bảo mật HMAC-SHA256 của vé (chống vé giả / can thiệp DB hoặc QR giả mạo)
@@ -415,6 +420,44 @@ exports.checkInTicket = async (req, res) => {
       });
     }
 
+    // Kiểm tra suất diễn (Session): ngăn chặn đi nhầm suất hoặc suất đã kết thúc
+    const ticketSessionId = String(ticket.session_id?._id || ticket.session_id || "");
+    const session = ticket.session_id;
+
+    if (session?.status === "CANCELLED") {
+      return res.status(400).json({
+        success: false,
+        message: `Suất diễn "${session.name}" của vé này đã bị huỷ!`,
+      });
+    }
+
+    if (targetSessionId && ticketSessionId !== targetSessionId) {
+      const startTimeStr = session?.start_time ? new Date(session.start_time).toLocaleString("vi-VN") : "";
+      return res.status(400).json({
+        success: false,
+        message: `Sai suất diễn! Vé này dành cho "${session?.name || 'suất khác'}"${startTimeStr ? ` (${startTimeStr})` : ''}, không phải suất đang chọn soát vé.`,
+      });
+    }
+
+    const now = new Date();
+    const EARLY_CHECKIN_HOURS = 4;
+    const startMs = session?.start_time ? new Date(session.start_time).getTime() : null;
+    const endMs = session?.end_time ? new Date(session.end_time).getTime() : null;
+
+    if (endMs && now.getTime() > endMs) {
+      return res.status(400).json({
+        success: false,
+        message: `Suất diễn "${session?.name || 'này'}" đã kết thúc vào lúc ${new Date(endMs).toLocaleString("vi-VN")}!`,
+      });
+    }
+
+    if (startMs && now.getTime() < startMs - EARLY_CHECKIN_HOURS * 3600 * 1000) {
+      return res.status(400).json({
+        success: false,
+        message: `Chưa đến giờ soát vé cho suất "${session?.name || 'này'}"! Suất diễn bắt đầu lúc ${new Date(startMs).toLocaleString("vi-VN")}.`,
+      });
+    }
+
     if (ticket.status === "USED") {
       return res.status(409).json({
         success: false,
@@ -433,14 +476,66 @@ exports.checkInTicket = async (req, res) => {
     );
     if (!updated) return res.status(409).json({ success: false, message: "Vé vừa được sử dụng" });
 
+    const seatLabel = ticket.seat_id
+      ? `${ticket.seat_id.section_name} - Hàng ${ticket.seat_id.row_label} - Ghế ${ticket.seat_id.seat_number}`
+      : "Vé đứng (GA)";
+    const ownerName = ticket.owner_id?.full_name || ticket.owner_id?.username || "Khách hàng";
+
     res.json({
       success: true,
       message: "Check-in thành công!",
       ticket: {
         ticketCode: updated.ticket_code,
         eventName: ticket.event_id?.title,
+        venueName: ticket.event_id?.venue_name,
+        sessionName: session?.name,
+        sessionStart: session?.start_time,
+        sessionEnd: session?.end_time,
         zoneName: ticket.tier_id?.name,
+        seat: seatLabel,
+        ownerName,
+        gate: req.body?.gate || "Cổng chính",
         scannedAt: updated.checked_in_at,
+      },
+    });
+  } catch (err) {
+    fail(res, err);
+  }
+};
+
+// GET /booking/tickets/:id/status — Khách kiểm tra trạng thái vé thời gian thực (check-in tại cổng)
+exports.getTicketStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const isObjectId = mongoose.Types.ObjectId.isValid(id);
+    const filter = isObjectId
+      ? { $or: [{ _id: id }, { ticket_code: id }], owner_id: req.user.id }
+      : { ticket_code: id, owner_id: req.user.id };
+
+    const ticket = await Ticket.findOne(filter)
+      .populate("event_id", "title venue_name")
+      .populate("session_id", "name start_time end_time")
+      .populate("tier_id", "name")
+      .populate("seat_id", "section_name row_label seat_number");
+    if (!ticket) return res.status(404).json({ success: false, message: "Không tìm thấy vé" });
+
+    const seatLabel = ticket.seat_id
+      ? `${ticket.seat_id.section_name} - Hàng ${ticket.seat_id.row_label} - Ghế ${ticket.seat_id.seat_number}`
+      : "Vé đứng (GA)";
+
+    res.json({
+      success: true,
+      ticket: {
+        id: ticket._id,
+        ticketCode: ticket.ticket_code,
+        status: ticket.status,
+        checkedInAt: ticket.checked_in_at,
+        eventName: ticket.event_id?.title,
+        venueName: ticket.event_id?.venue_name,
+        sessionName: ticket.session_id?.name,
+        sessionStart: ticket.session_id?.start_time,
+        zoneName: ticket.tier_id?.name,
+        seat: seatLabel,
       },
     });
   } catch (err) {
@@ -489,8 +584,26 @@ exports.myStaffEvents = async (req, res) => {
       filter = req.user.role === "ORGANIZER" ? { $or: [{ _id: { $in: ids } }, { organizer_id: req.user.id }] } : { _id: { $in: ids } };
     }
     const events = await Event.find(filter).sort({ start_time: -1 }).limit(100).select("title venue_name city start_time status");
-    const gates = await StaffAssignment.find({ staff_user_id: req.user.id, is_active: true }).select("event_id assigned_gate");
+    const eventIds = events.map((e) => e._id);
+    const [gates, sessions] = await Promise.all([
+      StaffAssignment.find({ staff_user_id: req.user.id, is_active: true }).select("event_id assigned_gate"),
+      EventSession.find({ event_id: { $in: eventIds }, status: { $ne: "CANCELLED" } }).sort({ start_time: 1 }).select("event_id name start_time end_time status"),
+    ]);
+
     const gateByEvent = new Map(gates.map((g) => [String(g.event_id), g.assigned_gate]));
+    const sessionsByEvent = new Map();
+    for (const s of sessions) {
+      const eid = String(s.event_id);
+      if (!sessionsByEvent.has(eid)) sessionsByEvent.set(eid, []);
+      sessionsByEvent.get(eid).push({
+        id: s._id,
+        name: s.name,
+        startTime: s.start_time,
+        endTime: s.end_time,
+        status: s.status,
+      });
+    }
+
     res.json({
       success: true,
       events: events.map((e) => ({
@@ -501,6 +614,7 @@ exports.myStaffEvents = async (req, res) => {
         startTime: e.start_time,
         status: e.status,
         assignedGate: gateByEvent.get(String(e._id)) || null,
+        sessions: sessionsByEvent.get(String(e._id)) || [],
       })),
     });
   } catch (err) {

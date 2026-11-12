@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Html5Qrcode } from 'html5-qrcode';
 import {
@@ -11,6 +11,7 @@ import {
   BarChart3,
   Keyboard,
   AlertTriangle,
+  X,
 } from 'lucide-react';
 import { api } from '../../api/client';
 import { PATHS } from '../../routes/paths';
@@ -26,6 +27,7 @@ export default function StaffCheckInPage() {
 
   const [events, setEvents] = useState([]);
   const [selectedEventId, setSelectedEventId] = useState('');
+  const [selectedSessionId, setSelectedSessionId] = useState('');
   const [gate, setGate] = useState('Cổng chính');
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -35,6 +37,7 @@ export default function StaffCheckInPage() {
   const [sound, setSound] = useState(true);
   const [last, setLast] = useState(null);
   const [recent, setRecent] = useState([]);
+  const [successModal, setSuccessModal] = useState(null);
 
   const inputRef = useRef(null);
   const scannerRef = useRef(null);
@@ -42,8 +45,42 @@ export default function StaffCheckInPage() {
   const soundRef = useRef(sound);
   const busyRef = useRef(false);
   const selectedEventIdRef = useRef('');
+  const selectedSessionIdRef = useRef('');
   soundRef.current = sound;
   selectedEventIdRef.current = selectedEventId;
+  selectedSessionIdRef.current = selectedSessionId;
+
+  const currentEventSessions = useMemo(() => {
+    const ev = events.find((e) => e.id === selectedEventId);
+    return ev?.sessions || [];
+  }, [events, selectedEventId]);
+
+  useEffect(() => {
+    if (currentEventSessions.length === 1) {
+      setSelectedSessionId(currentEventSessions[0].id);
+    } else if (currentEventSessions.length > 1) {
+      const now = Date.now();
+      const ongoingOrNext = currentEventSessions.find(
+        (s) => new Date(s.endTime).getTime() >= now,
+      );
+      setSelectedSessionId(ongoingOrNext ? ongoingOrNext.id : '');
+    } else {
+      setSelectedSessionId('');
+    }
+  }, [currentEventSessions]);
+
+  useEffect(() => {
+    if (!successModal) return;
+    const onKeyDown = (e) => {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') {
+        e.preventDefault();
+        setSuccessModal(null);
+        inputRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [successModal]);
 
   useEffect(() => {
     api
@@ -135,16 +172,23 @@ export default function StaffCheckInPage() {
           qrHash: hash || undefined,
           gate,
           eventId: activeEventId,
+          sessionId: selectedSessionIdRef.current || undefined,
         });
         const item = {
           ok: true,
           code: res.ticket?.ticketCode || code,
           event: res.ticket?.eventName || '',
+          venue: res.ticket?.venueName || '',
+          sessionName: res.ticket?.sessionName || '',
           zone: res.ticket?.zoneName || '',
+          seat: res.ticket?.seat || 'Vé đứng (GA)',
+          owner: res.ticket?.ownerName || 'Khách hàng',
+          gate: res.ticket?.gate || gate,
           time,
           message: res.message || 'Check-in thành công',
         };
         setLast(item);
+        setSuccessModal(item);
         setRecent((p) => [item, ...p].slice(0, 12));
         beep(true);
       } catch (err) {
@@ -312,7 +356,7 @@ export default function StaffCheckInPage() {
         </div>
       ) : (
         <div className='bg-white border border-[#e4e4e7] rounded-2xl p-5 space-y-4'>
-          <div className='grid gap-3 sm:grid-cols-2'>
+          <div className={`grid gap-3 ${currentEventSessions.length > 0 ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
             <label className='flex flex-col gap-1 text-sm'>
               <span className='text-xs font-semibold uppercase tracking-wider text-[#52525b]'>
                 Sự kiện đang soát vé
@@ -330,6 +374,29 @@ export default function StaffCheckInPage() {
               </select>
             </label>
 
+            {currentEventSessions.length > 0 && (
+              <label className='flex flex-col gap-1 text-sm'>
+                <span className='text-xs font-semibold uppercase tracking-wider text-[#52525b]'>
+                  Suất diễn {currentEventSessions.length > 1 && `(${currentEventSessions.length} suất)`}
+                </span>
+                <select
+                  aria-label='Suất diễn đang soát vé'
+                  className={inputCls}
+                  value={selectedSessionId}
+                  onChange={(e) => setSelectedSessionId(e.target.value)}>
+                  {currentEventSessions.length > 1 && (
+                    <option value=''>Tất cả suất (Tự động theo giờ)</option>
+                  )}
+                  {currentEventSessions.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({new Date(s.startTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}{' '}
+                      {new Date(s.startTime).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
             <label className='flex flex-col gap-1 text-sm'>
               <span className='text-xs font-semibold uppercase tracking-wider text-[#52525b]'>Cổng soát vé</span>
               <input
@@ -343,8 +410,14 @@ export default function StaffCheckInPage() {
           </div>
 
           <div className='flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-[#f4f4f6]'>
-            <span className='text-xs text-[#71717a]'>
-              Đang soát cho: <strong className='text-[#09090b]'>{selectedEvent?.title || '—'}</strong>
+            <span className='text-xs text-[#71717a] flex flex-wrap items-center gap-1.5'>
+              <span>Đang soát cho:</span>
+              <strong className='text-[#09090b]'>{selectedEvent?.title || '—'}</strong>
+              {currentEventSessions.find((s) => s.id === selectedSessionId) && (
+                <span className='text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full font-semibold text-[11px]'>
+                  {currentEventSessions.find((s) => s.id === selectedSessionId).name}
+                </span>
+              )}
             </span>
             {camOn ? (
               <button type='button' className='tb-btn tb-btn-outline' onClick={stopCamera}>
@@ -429,6 +502,89 @@ export default function StaffCheckInPage() {
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {/* MODAL CHECK-IN THÀNH CÔNG CHO NHÂN VIÊN */}
+      {successModal && (
+        <div
+          className='fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50'
+          onClick={() => {
+            setSuccessModal(null);
+            inputRef.current?.focus();
+          }}>
+          <div
+            className='bg-white border border-[#e4e4e7] rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-5 text-center'
+            onClick={(e) => e.stopPropagation()}>
+            <div className='flex justify-between items-center'>
+              <span className='text-[11px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full'>
+                Xác thực thành công · {successModal.gate}
+              </span>
+              <button
+                type='button'
+                onClick={() => {
+                  setSuccessModal(null);
+                  inputRef.current?.focus();
+                }}
+                className='text-[#71717a] hover:text-[#09090b] p-1'>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className='w-16 h-16 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto border-2 border-emerald-200'>
+              <CheckCircle2 size={36} className='stroke-[2.5]' />
+            </div>
+
+            <div>
+              <h2 className='text-2xl font-black text-[#09090b] tracking-tight'>VÉ HỢP LỆ</h2>
+              <p className='text-xs text-[#71717a] mt-1'>{successModal.message}</p>
+            </div>
+
+            <div className='bg-[#f9f9fb] border border-[#e4e4e7] rounded-2xl p-4 text-left space-y-2.5 text-xs'>
+              <div className='font-bold text-[#09090b] text-sm leading-snug line-clamp-2'>
+                {successModal.event}
+              </div>
+              {successModal.sessionName && (
+                <div className='text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md inline-block'>
+                  Suất: {successModal.sessionName}
+                </div>
+              )}
+              <div className='grid grid-cols-2 gap-2 pt-2 border-t border-[#e4e4e7]'>
+                <div>
+                  <span className='text-[#71717a] text-[11px] block'>Khách hàng</span>
+                  <span className='font-bold text-[#09090b] text-sm truncate block'>{successModal.owner}</span>
+                </div>
+                <div>
+                  <span className='text-[#71717a] text-[11px] block'>Hạng vé</span>
+                  <span className='font-bold text-[#09090b] text-sm truncate block'>{successModal.zone}</span>
+                </div>
+                <div>
+                  <span className='text-[#71717a] text-[11px] block'>Vị trí ngồi</span>
+                  <span className='font-semibold text-[#09090b]'>{successModal.seat}</span>
+                </div>
+                <div>
+                  <span className='text-[#71717a] text-[11px] block'>Thời gian</span>
+                  <span className='font-semibold text-[#09090b]'>{successModal.time}</span>
+                </div>
+              </div>
+              <div className='pt-2 border-t border-[#e4e4e7] flex items-center justify-between font-mono text-[11px] text-[#71717a]'>
+                <span>Mã vé:</span>
+                <span className='font-bold text-[#09090b]'>#{successModal.code}</span>
+              </div>
+            </div>
+
+            <button
+              type='button'
+              autoFocus
+              onClick={() => {
+                setSuccessModal(null);
+                inputRef.current?.focus();
+              }}
+              className='w-full py-3 bg-[#09090b] text-white text-xs font-bold rounded-full hover:bg-[#27272a] transition-colors flex items-center justify-center gap-2'>
+              <span>Tiếp tục soát vé</span>
+              <span className='text-[10px] opacity-60 font-normal'>(Phím cách / Enter)</span>
+            </button>
+          </div>
         </div>
       )}
     </div>
