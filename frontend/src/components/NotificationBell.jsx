@@ -74,7 +74,7 @@ export default function NotificationBell() {
         aria-label={`Thông báo${unread ? `, ${unread} chưa đọc` : ''}`}>
         <Bell size={18} />
         {unread > 0 && (
-          <span className='absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-[#09090b] text-white text-[10px] font-bold flex items-center justify-center'>
+          <span className='absolute -top-0.5 -right-0.5 min-w-4.5 h-4.5 px-1 rounded-full bg-[#09090b] text-white text-[10px] font-bold flex items-center justify-center'>
             {unread > 9 ? '9+' : unread}
           </span>
         )}
