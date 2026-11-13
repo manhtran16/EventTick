@@ -18,11 +18,29 @@ import api from '../../api/client';
 import { useToast } from '../../context/ToastContext';
 import { PATHS } from '../../routes/paths';
 
+const pad = (n) => String(n).padStart(2, '0');
+// Giá trị cho <input type="datetime-local"> theo giờ địa phương
+const toLocalInput = (d) => {
+  const x = new Date(d);
+  return `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}T${pad(x.getHours())}:${pad(x.getMinutes())}`;
+};
+const fmtDT = (d) => (d ? new Date(d).toLocaleString('vi-VN') : '—');
+
+const STATUS_META = {
+  RUNNING: { label: 'Đang chạy', cls: 'bg-[#09090b] text-white' },
+  UPCOMING: { label: 'Sắp diễn ra', cls: 'bg-[#f4f4f6] text-[#09090b] border border-[#e4e4e7]' },
+  EXPIRED: { label: 'Hết hạn', cls: 'bg-[#f4f4f6] text-[#52525b] border border-[#e4e4e7]' },
+  EXHAUSTED: { label: 'Hết lượt', cls: 'bg-[#f4f4f6] text-[#52525b] border border-[#e4e4e7]' },
+  PAUSED: { label: 'Tạm ngưng', cls: 'bg-[#f4f4f6] text-[#52525b] border border-[#e4e4e7]' },
+};
+
 export default function OrganizerVouchersPage() {
   const { eventId } = useParams();
   const { showToast } = useToast();
 
   const [summary, setSummary] = useState(null);
+  const [saleWindow, setSaleWindow] = useState(null);
+  const [eventInfo, setEventInfo] = useState(null);
   const [vouchers, setVouchers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -48,6 +66,16 @@ export default function OrganizerVouchersPage() {
       const res = await api.get(`/organizer/events/${eventId}/vouchers`);
       setSummary(res.summary || {});
       setVouchers(res.items || []);
+      setSaleWindow(res.saleWindow || null);
+      setEventInfo(res.event || null);
+      if (res.saleWindow) {
+        // Mặc định hiệu lực = toàn bộ thời gian bán vé
+        setFormData((f) => ({
+          ...f,
+          validFrom: toLocalInput(res.saleWindow.from),
+          validUntil: toLocalInput(res.saleWindow.to),
+        }));
+      }
     } catch (err) {
       showToast(err.message || 'Không thể tải danh sách mã khuyến mãi');
     } finally {
@@ -69,13 +97,22 @@ export default function OrganizerVouchersPage() {
 
   const handleCreate = async (e) => {
     e.preventDefault();
+    const from = new Date(formData.validFrom);
+    const until = new Date(formData.validUntil);
+    if (until <= from) return showToast('Thời điểm kết thúc phải sau thời điểm bắt đầu');
+    if (saleWindow && (from < new Date(saleWindow.from) || until > new Date(saleWindow.to))) {
+      return showToast(`Hiệu lực phải nằm trong thời gian bán vé (${fmtDT(saleWindow.from)} – ${fmtDT(saleWindow.to)})`);
+    }
+    const val = Number(formData.discountValue);
+    if (formData.discountType === 'PERCENT' && (val <= 0 || val > 100)) return showToast('Giảm theo % phải từ 0.01 đến 100');
     try {
       setSubmitting(true);
       await api.post(`/organizer/events/${eventId}/vouchers`, {
         code: formData.code.trim().toUpperCase(),
         discountType: formData.discountType,
         discountValue: Number(formData.discountValue),
-        maxDiscountAmount: formData.maxDiscountAmount ? Number(formData.maxDiscountAmount) : undefined,
+        maxDiscountAmount:
+          formData.discountType === 'PERCENT' && formData.maxDiscountAmount ? Number(formData.maxDiscountAmount) : undefined,
         minOrderAmount: Number(formData.minOrderAmount || 0),
         usageLimit: Number(formData.usageLimit || 100),
         maxPerUser: Number(formData.maxPerUser || 1),
@@ -118,14 +155,26 @@ export default function OrganizerVouchersPage() {
           </Link>
           <h1 className='text-2xl font-bold tracking-tight text-[#09090b]'>Quản Lý Voucher &amp; ROI</h1>
           <p className='text-xs text-[#71717a]'>
-            Mã sự kiện: <span className='font-mono font-semibold text-[#09090b]'>{eventId}</span>
+            Sự kiện:{' '}
+            <span className='font-semibold text-[#09090b]'>{eventInfo?.title || eventId}</span>
+          </p>
+          <p className='text-xs text-[#71717a]'>
+            Thời gian bán vé:{' '}
+            {saleWindow ? (
+              <span className='font-semibold text-[#09090b]'>
+                {fmtDT(saleWindow.from)} – {fmtDT(saleWindow.to)}
+              </span>
+            ) : (
+              <span className='font-semibold text-red-600'>Chưa có hạng vé, cần tạo hạng vé trước khi tạo voucher</span>
+            )}
           </p>
         </div>
 
         <button
           type='button'
+          disabled={!saleWindow}
           onClick={() => setCreateModalOpen(true)}
-          className='inline-flex items-center gap-2 px-5 py-2.5 bg-[#09090b] text-white text-xs font-semibold rounded-full hover:bg-[#27272a] transition-colors shrink-0'>
+          className='disabled:opacity-40 inline-flex items-center gap-2 px-5 py-2.5 bg-[#09090b] text-white text-xs font-semibold rounded-full hover:bg-[#27272a] transition-colors shrink-0'>
           <Plus size={15} />
           <span>Tạo mã giảm giá mới</span>
         </button>
@@ -185,6 +234,7 @@ export default function OrganizerVouchersPage() {
                 <tr className='border-b border-[#e4e4e7] text-[#71717a] uppercase text-[11px]'>
                   <th className='py-3 px-3'>Mã Voucher</th>
                   <th className='py-3 px-3'>Mức giảm</th>
+                  <th className='py-3 px-3'>Hiệu lực</th>
                   <th className='py-3 px-3'>Lượt dùng</th>
                   <th className='py-3 px-3 text-right'>Doanh thu ROI</th>
                   <th className='py-3 px-3 text-center'>Trạng thái</th>
@@ -199,6 +249,7 @@ export default function OrganizerVouchersPage() {
                       <div className='text-[11px] text-[#71717a]'>
                         Đơn tối thiểu: {(v.minOrderAmount || 0).toLocaleString('vi-VN')} ₫
                       </div>
+                      <div className='text-[11px] text-[#71717a]'>Tối đa {v.maxPerUser || 1} lượt/người</div>
                     </td>
 
                     <td className='py-3.5 px-3 font-semibold text-[#09090b]'>
@@ -212,10 +263,16 @@ export default function OrganizerVouchersPage() {
                       )}
                     </td>
 
+                    <td className='py-3.5 px-3 text-[11px] text-[#09090b] whitespace-nowrap'>
+                      <div>Từ: {fmtDT(v.validFrom)}</div>
+                      <div>Đến: {fmtDT(v.validUntil)}</div>
+                    </td>
+
                     <td className='py-3.5 px-3'>
                       <div className='font-bold text-[#09090b]'>
                         {v.usedCount || 0} / {v.usageLimit}
                       </div>
+                      <div className='text-[10px] text-[#71717a]'>Còn lại: {v.remainingCount ?? 0}</div>
                       <div className='w-24 h-1.5 bg-[#f4f4f6] rounded-full mt-1 overflow-hidden'>
                         <div
                           className='h-full bg-[#09090b]'
@@ -235,12 +292,8 @@ export default function OrganizerVouchersPage() {
 
                     <td className='py-3.5 px-3 text-center'>
                       <span
-                        className={`px-2.5 py-0.5 rounded-full font-bold text-[10px] ${
-                          v.isActive
-                            ? 'bg-[#09090b] text-white'
-                            : 'bg-[#f4f4f6] text-[#52525b] border border-[#e4e4e7]'
-                        }`}>
-                        {v.isActive ? 'Đang chạy' : 'Tạm ngưng'}
+                        className={`px-2.5 py-0.5 rounded-full font-bold text-[10px] ${(STATUS_META[v.status] || STATUS_META.PAUSED).cls}`}>
+                        {(STATUS_META[v.status] || STATUS_META.PAUSED).label}
                       </span>
                     </td>
 
@@ -352,12 +405,45 @@ export default function OrganizerVouchersPage() {
                 </div>
               </div>
 
+              {formData.discountType === 'PERCENT' && (
+                <div className='space-y-1'>
+                  <label className='font-semibold text-[#09090b]'>Giảm tối đa (đ)</label>
+                  <input
+                    type='number'
+                    min={1}
+                    value={formData.maxDiscountAmount}
+                    onChange={(e) => setFormData({ ...formData, maxDiscountAmount: e.target.value })}
+                    className='w-full px-3 py-2 border border-[#e4e4e7] rounded-xl outline-none focus:border-[#09090b]'
+                  />
+                </div>
+              )}
+
+              <div className='space-y-1'>
+                <label className='font-semibold text-[#09090b]'>Số lượt tối đa mỗi người</label>
+                <input
+                  type='number'
+                  required
+                  min={1}
+                  value={formData.maxPerUser}
+                  onChange={(e) => setFormData({ ...formData, maxPerUser: e.target.value })}
+                  className='w-full px-3 py-2 border border-[#e4e4e7] rounded-xl outline-none focus:border-[#09090b]'
+                />
+              </div>
+
+              {saleWindow && (
+                <p className='text-[11px] text-[#71717a]'>
+                  Hiệu lực phải nằm trong thời gian bán vé: {fmtDT(saleWindow.from)} – {fmtDT(saleWindow.to)}
+                </p>
+              )}
+
               <div className='grid grid-cols-2 gap-3'>
                 <div className='space-y-1'>
                   <label className='font-semibold text-[#09090b]'>Hiệu lực từ</label>
                   <input
                     type='datetime-local'
                     required
+                    min={saleWindow ? toLocalInput(saleWindow.from) : undefined}
+                    max={saleWindow ? toLocalInput(saleWindow.to) : undefined}
                     value={formData.validFrom}
                     onChange={(e) => setFormData({ ...formData, validFrom: e.target.value })}
                     className='w-full px-3 py-2 border border-[#e4e4e7] rounded-xl outline-none focus:border-[#09090b]'
@@ -368,6 +454,8 @@ export default function OrganizerVouchersPage() {
                   <input
                     type='datetime-local'
                     required
+                    min={saleWindow ? toLocalInput(saleWindow.from) : undefined}
+                    max={saleWindow ? toLocalInput(saleWindow.to) : undefined}
                     value={formData.validUntil}
                     onChange={(e) => setFormData({ ...formData, validUntil: e.target.value })}
                     className='w-full px-3 py-2 border border-[#e4e4e7] rounded-xl outline-none focus:border-[#09090b]'

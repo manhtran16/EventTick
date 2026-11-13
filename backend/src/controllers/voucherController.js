@@ -1,4 +1,4 @@
-const { Voucher, Event, Order } = require("../models");
+const { Voucher, Event, Order, TicketTier } = require("../models");
 const { httpError, validId, ah, intIn, date } = require("../utils/http");
 const { audit } = require("../utils/audit");
 const { _helpers: H } = require("./organizerEventController");
@@ -12,14 +12,43 @@ async function ownVoucher(req, id) {
   return { voucher: v, event: e };
 }
 
+/** Khoảng thời gian bán vé của sự kiện = từ giờ mở bán sớm nhất đến giờ đóng bán muộn nhất của các hạng vé. */
+async function saleWindow(eventId) {
+  const tiers = await TicketTier.find({ event_id: eventId }).select("sale_start_time sale_end_time");
+  if (!tiers.length) return null;
+  return {
+    from: new Date(Math.min(...tiers.map((t) => +t.sale_start_time))),
+    to: new Date(Math.max(...tiers.map((t) => +t.sale_end_time))),
+  };
+}
+
+const fmt = (d) => new Date(d).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
+
+function assertInSaleWindow(win, from, until) {
+  if (!win) throw httpError("Sự kiện chưa có hạng vé nào, hãy tạo hạng vé (xác định thời gian bán vé) trước khi tạo voucher", 409);
+  if (from < win.from || until > win.to) {
+    throw httpError(`Thời gian hiệu lực voucher phải nằm trong thời gian bán vé (${fmt(win.from)} – ${fmt(win.to)})`, 400);
+  }
+}
+
+function statusOf(v, now = new Date()) {
+  if (!v.is_active) return "PAUSED";
+  if (v.usage_limit > 0 && v.used_count >= v.usage_limit) return "EXHAUSTED";
+  if (now < v.valid_from) return "UPCOMING";
+  if (now > v.valid_until) return "EXPIRED";
+  return "RUNNING";
+}
+
 const toClient = (v, statsMap) => {
-  const st = statsMap?.get(String>(v._id)) || {
+  const st = statsMap?.get(String(v._id)) || {
     paidOrdersCount: 0,
     totalDiscountGranted: 0,
     grossOrderSubtotal: 0,
     netRevenueGenerated: 0,
   };
   return {
+    status: statusOf(v), remainingCount: Math.max(0, (v.usage_limit || 0) - (v.used_count || 0)),
+    createdAt: v.created_at,
     _id: v._id, eventId: v.event_id, code: v.code, discountType: v.discount_type, discountValue: v.discount_value,
     maxDiscountAmount: v.max_discount_amount, minOrderAmount: v.min_order_amount, usageLimit: v.usage_limit,
     usedCount: v.used_count, maxPerUser: v.max_per_user, validFrom: v.valid_from, validUntil: v.valid_until, isActive: v.is_active,
@@ -41,8 +70,9 @@ function checkValue(type, value) {
 // GET /v1/organizer/events/:eventId/vouchers (+ thống kê hiệu quả khuyến mãi)
 exports.list = ah(async (req, res) => {
   const event = await H.ownEvent(req, req.params.eventId);
-  const [items, agg] = await Promise.all([
+  const [items, win, agg] = await Promise.all([
     Voucher.find({ event_id: event._id }).sort({ _id: -1 }),
+    saleWindow(event._id),
     Order.aggregate([
       { $match: { event_id: event._id, status: "PAID", voucher_id: { $ne: null } } },
       {
@@ -79,7 +109,11 @@ exports.list = ah(async (req, res) => {
     },
   );
 
-  res.json({ success: true, summary, items: clientItems });
+  res.json({
+    success: true, summary, items: clientItems,
+    saleWindow: win && { from: win.from, to: win.to },
+    event: { _id: event._id, title: event.title, status: event.status },
+  });
 });
 
 // POST /v1/organizer/events/:eventId/vouchers
@@ -94,6 +128,7 @@ exports.create = ah(async (req, res) => {
   const from = date(b.validFrom ?? new Date(), "validFrom");
   const until = date(b.validUntil, "validUntil");
   if (until <= from) throw httpError("validUntil phải sau validFrom", 400);
+  assertInSaleWindow(await saleWindow(event._id), from, until);
 
   const doc = {
     event_id: event._id, code, discount_type: type, discount_value: checkValue(type, b.discountValue),
@@ -113,7 +148,8 @@ exports.create = ah(async (req, res) => {
 
 // PUT /v1/organizer/vouchers/:id
 exports.update = ah(async (req, res) => {
-  const { voucher } = await ownVoucher(req, req.params.id);
+  const { voucher, event } = await ownVoucher(req, req.params.id);
+  if (["CANCELLED", "ENDED"].includes(event.status)) throw httpError("Sự kiện đã kết thúc hoặc bị huỷ", 409);
   const b = req.body || {};
   const set = {};
   const used = voucher.used_count > 0;
@@ -142,6 +178,7 @@ exports.update = ah(async (req, res) => {
   const from = b.validFrom !== undefined ? date(b.validFrom, "validFrom") : voucher.valid_from;
   const until = b.validUntil !== undefined ? date(b.validUntil, "validUntil") : voucher.valid_until;
   if (until <= from) throw httpError("validUntil phải sau validFrom", 400);
+  if (b.validFrom !== undefined || b.validUntil !== undefined) assertInSaleWindow(await saleWindow(event._id), from, until);
   if (b.validFrom !== undefined) set.valid_from = from;
   if (b.validUntil !== undefined) set.valid_until = until;
   if (b.isActive !== undefined) set.is_active = H.bool(b.isActive);
