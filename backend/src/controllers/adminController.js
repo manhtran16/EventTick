@@ -272,7 +272,15 @@ exports.listPayouts = ah(async (req, res) => {
         name: p.organizer_id?.full_name || p.organizer_id?.username,
         email: p.organizer_id?.email,
         phone: p.organizer_id?.phone,
-        bankAccount: profileMap[p.organizer_id?._id?.toString()]?.bank_account_info,
+        bankAccount: (() => {
+          const profile = profileMap[p.organizer_id?._id?.toString()];
+          if (!profile) return null;
+          return {
+            bankName: profile.bank_name,
+            accountNo: profile.bank_account_no,
+            accountHolder: profile.bank_account_holder,
+          };
+        })(),
       },
       grossRevenue: p.gross_revenue,
       platformCommissionAmt: p.platform_commission_amt,
@@ -282,7 +290,7 @@ exports.listPayouts = ah(async (req, res) => {
       bankTransferReceiptUrl: p.bank_transfer_receipt_url,
       settledByAdmin: p.settled_by_admin?.full_name || p.settled_by_admin?.username,
       settledAt: p.settled_at,
-      createdAt: p.created_at,
+      createdAt: p.created_at || p._id.getTimestamp(),
     })),
     total,
     page: pageNum,
@@ -367,7 +375,7 @@ exports.listRefunds = ah(async (req, res) => {
       .populate("ticket_id", "ticket_code")
       .populate({
         path: "order_id",
-        select: "order_code total_amount event_id",
+        select: "order_code total_amount event_id refund_bank_info",
         populate: { path: "event_id", select: "title" },
       })
       .sort({ created_at: -1 })
@@ -391,7 +399,9 @@ exports.listRefunds = ah(async (req, res) => {
       refundType: r.refund_type,
       refundAmount: r.refund_amount,
       reason: r.reason,
+      refundBankInfo: r.order_id?.refund_bank_info || null,
       status: r.status,
+      transferReference: r.transfer_reference,
       createdAt: r.created_at,
       processedAt: r.processed_at,
     })),
@@ -399,6 +409,66 @@ exports.listRefunds = ah(async (req, res) => {
     page: pageNum,
     totalPages: Math.ceil(total / limitNum),
   });
+});
+
+// GET /v1/admin/refunds/:id — Trạng thái dùng để popup QR tự cập nhật
+exports.getRefundStatus = ah(async (req, res) => {
+  const refund = await RefundRequest.findById(validId(req.params.id, "ID yêu cầu hoàn tiền"))
+    .select("status transfer_reference processed_at refund_amount order_id");
+  if (!refund) throw httpError("Không tìm thấy yêu cầu hoàn tiền", 404);
+  res.json({
+    success: true,
+    refund: {
+      id: refund._id,
+      status: refund.status,
+      transferReference: refund.transfer_reference,
+      processedAt: refund.processed_at,
+      refundAmount: refund.refund_amount,
+      orderId: refund.order_id,
+    },
+  });
+});
+
+// PUT /v1/admin/refunds/:id/complete — Admin xác nhận đã chuyển khoản thủ công
+exports.completeRefund = ah(async (req, res) => {
+  const transferReference = req.body?.transferReference ? str(req.body.transferReference, 255, "mã giao dịch chuyển khoản") : undefined;
+  const note = req.body?.note ? str(req.body.note, 1000, "ghi chú") : undefined;
+  const refund = await RefundRequest.findOneAndUpdate(
+    { _id: validId(req.params.id, "ID yêu cầu hoàn tiền"), status: "PROCESSING" },
+    {
+      $set: {
+        status: "COMPLETED",
+        processed_by: req.user.id,
+        processed_at: new Date(),
+        ...(transferReference ? { transfer_reference: transferReference } : {}),
+        ...(note ? { processing_note: note } : {}),
+      },
+    },
+    { new: true },
+  );
+  if (!refund) throw httpError("Yêu cầu hoàn tiền không tồn tại hoặc đã được xử lý", 409);
+  await audit(req, "REFUND_MARK_COMPLETED", "refund_requests", refund._id, { transferReference });
+  res.json({ success: true, message: "Đã ghi nhận chuyển khoản hoàn tiền", refund });
+});
+
+// PUT /v1/admin/refunds/:id/reject — Admin báo lỗi thông tin nhận tiền
+exports.rejectRefund = ah(async (req, res) => {
+  const reason = str(req.body?.reason, 1000, "lý do báo lỗi");
+  const refund = await RefundRequest.findOneAndUpdate(
+    { _id: validId(req.params.id, "ID yêu cầu hoàn tiền"), status: "PROCESSING" },
+    {
+      $set: {
+        status: "REJECTED",
+        processing_note: reason,
+        processed_by: req.user.id,
+        processed_at: new Date(),
+      },
+    },
+    { new: true },
+  );
+  if (!refund) throw httpError("Yêu cầu hoàn tiền không tồn tại hoặc đã được xử lý", 409);
+  await audit(req, "REFUND_MARK_REJECTED", "refund_requests", refund._id, { reason });
+  res.json({ success: true, message: "Đã đánh dấu yêu cầu hoàn tiền bị lỗi", refund });
 });
 
 // POST /v1/admin/events/:id/bulk-refund (Hoàn tiền hàng loạt sự kiện bị huỷ)

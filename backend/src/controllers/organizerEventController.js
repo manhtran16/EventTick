@@ -1,3 +1,4 @@
+const ExcelJS = require("exceljs");
 const {
   Event,
   EventSession,
@@ -86,10 +87,10 @@ function parseTier(raw, sessionStart, label = "Hạng vé") {
   const from = r.saleStartTime ? date(r.saleStartTime, `${label}: giờ mở bán`) : new Date();
   const to = r.saleEndTime ? date(r.saleEndTime, `${label}: giờ đóng bán`) : (sessionStart || new Date(from.getTime() + 7 * 24 * HOUR));
   let safeTo = to;
-  if (to <= from) {
-    console.warn(`⚠️ [parseTier] ${label}: giờ đóng bán (${to.toISOString()}) <= giờ mở bán (${from.toISOString()}), tự động điều chỉnh đóng bán sau mở bán 1 giờ`);
-    safeTo = new Date(from.getTime() + HOUR);
-  }
+  if (r.saleStartTime && r.saleEndTime && to <= from) throw httpError(`${label}: giờ đóng bán phải sau giờ mở bán`, 400);
+  if (sessionStart && r.saleStartTime && from >= sessionStart) throw httpError(`${label}: giờ mở bán phải trước giờ bắt đầu suất diễn`, 400);
+  if (sessionStart && r.saleEndTime && to > sessionStart) throw httpError(`${label}: giờ đóng bán không được sau giờ bắt đầu suất diễn`, 400);
+  if (to <= from) safeTo = new Date(from.getTime() + HOUR); // mặc định (không nhập): đóng bán sau mở bán 1 giờ
   if (r.zoneColor && !COLOR.test(r.zoneColor)) throw httpError(`${label}: zoneColor phải dạng #RRGGBB`, 400);
   const rawZoneType = String(r.zoneType ?? r.zone_type ?? "GA").toUpperCase();
   if (!["GA", "SEATED"].includes(rawZoneType)) {
@@ -216,8 +217,22 @@ exports.create = ah(async (req, res) => {
   if (!rawSessions.length) throw httpError("Cần ít nhất 1 suất diễn", 400);
   if (rawSessions.length > 30) throw httpError("Tối đa 30 suất diễn", 400);
   const sessionDefs = rawSessions.map((s, i) => parseSession(s, i, { requireFuture: !draft }));
+  const layoutKind = String(payload.seatLayout || "NONE").toUpperCase();
+  // Vé ngồi: tên hạng vé và số lượng lấy từ file Excel, bỏ qua số client gửi; giá, màu, giờ bán lấy từ form theo tên hạng
+  let seatedTiers = null;
+  if (layoutKind === "SEATED_FILE") {
+    const sm = require("./seatMapController");
+    seatedTiers = sm.seatedTiersOf((await sm.builtSeated(files)).sections);
+  }
   const tierLists = rawSessions.map((s, i) => {
-    const list = s.tickets || s.zones || [];
+    let list = s.tickets || s.zones || [];
+    if (seatedTiers) {
+      list = seatedTiers.map((ft) => {
+        const given = list.find((t) => String(t?.name ?? "").trim().toLowerCase() === ft.name.trim().toLowerCase());
+        if (!given) throw httpError(`Suất ${i + 1}: thiếu thông tin giá cho hạng vé "${ft.name}" (có trong file Excel)`, 400);
+        return { ...given, name: ft.name, totalQuantity: ft.quantity, zoneType: "SEATED" };
+      });
+    }
     if (!draft && !list.length) throw httpError(`Suất ${i + 1}: cần ít nhất 1 hạng vé`, 400);
     return list.map((t, j) => parseTier(t, sessionDefs[i].start_time, `Suất ${i + 1}, hạng vé ${j + 1}`));
   });
@@ -265,6 +280,19 @@ exports.create = ah(async (req, res) => {
     if (tiers.length) await TicketTier.insertMany(tiers);
     await recalcEvent(event._id);
 
+    // Tự vẽ sơ đồ từ hạng vé ngay lúc tạo (không cần lưu nháp rồi quay lại). Lỗi thì toàn bộ sự kiện bị rollback ở catch bên dưới.
+    // Nạp seatMapController tại đây (không ở đầu file) để tránh vòng phụ thuộc: seatMapController đã nạp file này.
+    const layoutMode = String(payload.seatLayout || "NONE").toUpperCase();
+    if (layoutMode === "GA_SVG" || layoutMode === "SEATED_FILE") {
+      // Vé đứng: chỉ SVG + danh sách gắn khu-hạng vé. Vé ngồi: SVG + Excel. File đi cùng request, lỗi thì rollback cả sự kiện.
+      await require("./seatMapController").applyUploadedLayout(req, event, {
+        mode: layoutMode,
+        svgBuffer: files.find((f) => f.fieldname === "svgFile")?.buffer,
+        excelBuffer: files.find((f) => f.fieldname === "excelFile")?.buffer,
+        zones: payload.seatZones,
+      });
+    }
+
     // Lưu thông tin thanh toán của Organizer nếu có gửi kèm
     if (payload.paymentInfo && req.user.id) {
       const { accountOwner, accountNumber, bankName, branch } = payload.paymentInfo;
@@ -301,6 +329,9 @@ exports.create = ah(async (req, res) => {
     console.error(`💥 [Tạo sự kiện THẤT BẠI]:`, err.message || err);
     if (created.event) {
       console.log(`🧹 [Rollback] Đang dọn dẹp eventId: ${created.event._id}`);
+      const { Seat, SeatmapLayout } = require("../models");
+      await Seat.deleteMany({ event_id: created.event._id });
+      await SeatmapLayout.deleteMany({ event_id: created.event._id });
       await TicketTier.deleteMany({ event_id: created.event._id });
       await EventSession.deleteMany({ event_id: created.event._id });
       await Event.deleteOne({ _id: created.event._id });
@@ -483,6 +514,7 @@ exports.cancel = ah(async (req, res) => {
       releasedOrders: bulkResult.releasedPendingOrders,
       refundedCount: bulkResult.refundedOrdersCount,
       totalRefundAmount: bulkResult.totalRefundAmount,
+      refundedTicketsCount: bulkResult.refundedTicketsCount,
       notifiedBuyersCount: bulkResult.notifiedBuyersCount,
     });
   }
@@ -576,7 +608,7 @@ exports.updateTier = ah(async (req, res) => {
   set.sale_end_time = to;
 
   if (b.totalQuantity !== undefined) {
-    if (tier.zone_type === "SEATED") throw httpError("Hạng vé bán theo ghế: số lượng bằng số ghế, do Admin dựng sơ đồ (SVG + Excel) quyết định, không sửa tay được", 400);
+    if (tier.zone_type === "SEATED") throw httpError("Hạng vé bán theo ghế: số lượng bằng số ghế trên sơ đồ nên không sửa tay được, hãy dựng lại sơ đồ để đổi", 400);
     const n = intIn(b.totalQuantity, 1, 100000, "totalQuantity");
     // Nguyên tử: chỉ cho giảm tới mức đã bán + đang giữ chỗ
     const q = await TicketTier.findOneAndUpdate(
@@ -706,7 +738,7 @@ exports.getEventAttendees = ah(async (req, res) => {
       .populate("tier_id", "name price")
       .populate("seat_id", "section_name row_label seat_number")
       .populate("session_id", "name start_time")
-      .populate("order_id", "order_code attendee_form_answers")
+      .populate("order_id", "order_code attendee_form_answers vat_invoice_info")
       .sort({ created_at: -1 })
       .skip(skip)
       .limit(limitNum),
@@ -731,6 +763,7 @@ exports.getEventAttendees = ah(async (req, res) => {
       checkedInAt: t.checked_in_at,
       orderCode: t.order_id?.order_code,
       attendeeFormAnswers: t.order_id?.attendee_form_answers,
+      vatInvoiceInfo: t.order_id?.vat_invoice_info,
     })),
     total,
     page: pageNum,
@@ -1009,7 +1042,7 @@ exports.getEventAnalytics = ah(async (req, res) => {
   });
 });
 
-// ------------------------------------------------------------------ UC33: data export (CSV)
+// ------------------------------------------------------------------ UC33: data export (Excel)
 // GET /v1/organizer/events/:id/export/attendees
 exports.exportAttendees = ah(async (req, res) => {
   const e = await ownEvent(req, req.params.id);
@@ -1020,29 +1053,64 @@ exports.exportAttendees = ah(async (req, res) => {
     .populate("session_id", "name")
     .sort({ created_at: -1 });
 
-  const rows = [
-    ["Mã vé", "Suất diễn", "Hạng vé", "Ghế", "Họ tên", "Email", "Số điện thoại", "Trạng thái", "Thời gian soát vé"],
+  const statusMap = {
+    VALID: "Hợp lệ",
+    USED: "Đã soát vé",
+    LISTED_RESALE: "Đang bán lại",
+    RESOLD_INVALID: "Đã sang nhượng",
+    REFUNDED: "Đã hoàn tiền",
+  };
+
+  const dataRows = tickets.map((t, index) => [
+    index + 1,
+    t.owner_id?.full_name || t.owner_id?.username || "—",
+    t.owner_id?.phone || "—",
+    t.owner_id?.email || "—",
+    t.tier_id?.name || "—",
+    t.seat_id ? `${t.seat_id.section_name}-${t.seat_id.row_label}${t.seat_id.seat_number}` : "GA",
+    t.ticket_code,
+    t.session_id?.name || "—",
+    statusMap[t.status] || t.status,
+    t.checked_in_at ? new Date(t.checked_in_at).toLocaleString("vi-VN") : "—",
+  ]);
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "EventTick";
+  wb.created = new Date();
+  const ws = wb.addWorksheet("Nguoi_tham_du");
+
+  ws.columns = [
+    { header: "STT", key: "stt", width: 8 },
+    { header: "H\u1ECD v\u00E0 t\u00EAn", key: "name", width: 25 },
+    { header: "S\u1ED1 \u0111i\u1EC7n tho\u1EA1i", key: "phone", width: 16 },
+    { header: "Email", key: "email", width: 28 },
+    { header: "H\u1EA1ng v\u00E9", key: "tier", width: 18 },
+    { header: "V\u1ECB tr\u00ED gh\u1EBF", key: "seat", width: 14 },
+    { header: "M\u00E3 v\u00E9", key: "code", width: 28 },
+    { header: "Su\u1EA5t di\u1EC5n", key: "session", width: 22 },
+    { header: "Tr\u1EA1ng th\u00E1i", key: "status", width: 16 },
+    { header: "Th\u1EDDi gian so\u00E1t v\u00E9", key: "checkedIn", width: 22 },
   ];
 
-  for (const t of tickets) {
-    rows.push([
-      t.ticket_code,
-      t.session_id?.name || "",
-      t.tier_id?.name || "",
-      t.seat_id ? `${t.seat_id.section_name}-${t.seat_id.row_label}${t.seat_id.seat_number}` : "GA",
-      t.owner_id?.full_name || t.owner_id?.username || "",
-      t.owner_id?.email || "",
-      t.owner_id?.phone || "",
-      t.status,
-      t.checked_in_at ? new Date(t.checked_in_at).toLocaleString("vi-VN") : "",
-    ]);
-  }
+  const headerRow = ws.getRow(1);
+  headerRow.height = 28;
+  headerRow.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 11 };
+  headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF18181B" } };
+  headerRow.alignment = { vertical: "middle", horizontal: "center" };
 
-  const csv = "\uFEFF" + rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\r\n");
+  dataRows.forEach((row) => {
+    const r = ws.addRow(row);
+    r.height = 22;
+    r.alignment = { vertical: "middle" };
+    r.getCell(1).alignment = { vertical: "middle", horizontal: "center" };
+    r.getCell(6).alignment = { vertical: "middle", horizontal: "center" };
+    r.getCell(9).alignment = { vertical: "middle", horizontal: "center" };
+  });
 
-  res.setHeader("Content-Type", "text/csv; charset=utf-8");
-  res.setHeader("Content-Disposition", `attachment; filename="attendees-${e._id}.csv"`);
-  res.send(csv);
+  const buffer = Buffer.from(await wb.xlsx.writeBuffer());
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", `attachment; filename="attendees-${e._id}.xlsx"`);
+  res.send(buffer);
 });
 
 // GET /v1/organizer/events/:id/export/orders
@@ -1053,32 +1121,68 @@ exports.exportOrders = ah(async (req, res) => {
     .populate("session_id", "name")
     .sort({ created_at: -1 });
 
-  const rows = [
-    ["Mã đơn", "Suất diễn", "Họ tên khách", "Email", "Số điện thoại", "Tổng tiền", "Giảm giá", "Thực thu", "Trạng thái", "Ngày tạo", "Công ty VAT", "MST VAT"],
+  const statusMap = {
+    PAID: "Đã thanh toán",
+    PENDING_PAYMENT: "Chờ thanh toán",
+    EXPIRED: "Hết hạn",
+    CANCELLED: "Đã huỷ",
+    REFUNDED: "Đã hoàn tiền",
+  };
+
+  const dataRows = orders.map((o, index) => [
+    index + 1,
+    o.order_code,
+    o.buyer_id?.full_name || o.buyer_id?.username || "—",
+    o.buyer_id?.phone || "—",
+    o.buyer_id?.email || "—",
+    o.session_id?.name || "—",
+    o.subtotal_amount || 0,
+    o.discount_amount || 0,
+    o.total_amount || 0,
+    statusMap[o.status] || o.status,
+    o.created_at ? new Date(o.created_at).toLocaleString("vi-VN") : "—",
+  ]);
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "EventTick";
+  wb.created = new Date();
+  const ws = wb.addWorksheet("Don_hang");
+
+  ws.columns = [
+    { header: "STT", key: "stt", width: 8 },
+    { header: "M\u00E3 \u0111\u01A1n", key: "orderCode", width: 26 },
+    { header: "H\u1ECD t\u00EAn kh\u00E1ch", key: "buyerName", width: 24 },
+    { header: "S\u1ED1 \u0111i\u1EC7n tho\u1EA1i", key: "phone", width: 16 },
+    { header: "Email", key: "email", width: 28 },
+    { header: "Su\u1EA5t di\u1EC5n", key: "session", width: 22 },
+    { header: "T\u1ED5ng ti\u1EC1n (\u0111)", key: "subtotal", width: 16 },
+    { header: "Gi\u1EA3m gi\u00E1 (\u0111)", key: "discount", width: 16 },
+    { header: "Th\u1EF1c thu (\u0111)", key: "total", width: 16 },
+    { header: "Tr\u1EA1ng th\u00E1i", key: "status", width: 16 },
+    { header: "Ng\u00E0y t\u1EA1o", key: "createdAt", width: 22 },
   ];
 
-  for (const o of orders) {
-    rows.push([
-      o.order_code,
-      o.session_id?.name || "",
-      o.buyer_id?.full_name || o.buyer_id?.username || "",
-      o.buyer_id?.email || "",
-      o.buyer_id?.phone || "",
-      o.subtotal_amount,
-      o.discount_amount,
-      o.total_amount,
-      o.status,
-      o.created_at ? new Date(o.created_at).toLocaleString("vi-VN") : "",
-      o.vat_invoice_info?.company_name || "",
-      o.vat_invoice_info?.tax_code || "",
-    ]);
-  }
+  const headerRow = ws.getRow(1);
+  headerRow.height = 28;
+  headerRow.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 11 };
+  headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF18181B" } };
+  headerRow.alignment = { vertical: "middle", horizontal: "center" };
 
-  const csv = "\uFEFF" + rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\r\n");
+  dataRows.forEach((row) => {
+    const r = ws.addRow(row);
+    r.height = 22;
+    r.alignment = { vertical: "middle" };
+    r.getCell(1).alignment = { vertical: "middle", horizontal: "center" };
+    r.getCell(7).numFmt = "#,##0";
+    r.getCell(8).numFmt = "#,##0";
+    r.getCell(9).numFmt = "#,##0";
+    r.getCell(10).alignment = { vertical: "middle", horizontal: "center" };
+  });
 
-  res.setHeader("Content-Type", "text/csv; charset=utf-8");
-  res.setHeader("Content-Disposition", `attachment; filename="orders-${e._id}.csv"`);
-  res.send(csv);
+  const buffer = Buffer.from(await wb.xlsx.writeBuffer());
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", `attachment; filename="orders-${e._id}.xlsx"`);
+  res.send(buffer);
 });
 
 // ------------------------------------------------------------------ UC34: payout settlement
@@ -1197,9 +1301,9 @@ exports.listPayouts = ah(async (req, res) => {
       rejectionReason: s.rejection_reason,
       bankTransferReceiptUrl: s.bank_transfer_receipt_url,
       settledAt: s.settled_at,
-      createdAt: s.created_at,
+      createdAt: s.created_at || s._id.getTimestamp(),
     })),
   });
 });
 
-exports._helpers = { ownEvent, ownSession, ownTier, assertSelling, recalcEvent, tierToClient, usedOf, num, bool, COLOR, SELLING };
+exports._helpers = { parseTier, ownEvent, ownSession, ownTier, assertSelling, recalcEvent, tierToClient, usedOf, num, bool, COLOR, SELLING };

@@ -21,6 +21,7 @@ import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
 import { PATHS } from '../../routes/paths';
 import FormField, { firstMissingRequired } from '../../components/FormField';
+import { VIETNAMESE_BANKS } from '../../data/vietnameseBanks';
 
 export default function ResaleMarketPage() {
   const { eventId } = useParams();
@@ -45,6 +46,7 @@ export default function ResaleMarketPage() {
   const [agreeTerms, setAgreeTerms] = useState(true);
   const [purchasing, setPurchasing] = useState(false);
   const [answers, setAnswers] = useState({});
+  const [refundBankInfo, setRefundBankInfo] = useState({ bankName: '', accountNo: '', accountHolder: '' });
 
   // Fetch all resale events
   useEffect(() => {
@@ -104,6 +106,7 @@ export default function ResaleMarketPage() {
     }
     setSelectedListing({ ...item, bundle });
     setAnswers({});
+    setRefundBankInfo({ bankName: '', accountNo: '', accountHolder: '' });
     setAgreeTerms(true);
   };
 
@@ -120,6 +123,18 @@ export default function ResaleMarketPage() {
       showToast(`Vui lòng trả lời: "${missing}"`);
       return;
     }
+    if (!refundBankInfo.bankName.trim()) {
+      showToast('Vui lòng nhập tên ngân hàng nhận tiền');
+      return;
+    }
+    if (!/^[0-9]{6,20}$/.test(refundBankInfo.accountNo.trim())) {
+      showToast('Số tài khoản phải gồm 6–20 chữ số');
+      return;
+    }
+    if (!refundBankInfo.accountHolder.trim()) {
+      showToast('Vui lòng nhập tên chủ tài khoản');
+      return;
+    }
     const bundle = selectedListing.bundle;
     const listingIds = bundle.allowPartial === false ? bundle.items.map((i) => i.id) : [selectedListing.id];
 
@@ -129,6 +144,7 @@ export default function ResaleMarketPage() {
         eventId,
         listingIds,
         attendeeFormAnswers: answers,
+        refundBankInfo,
         agreeTerms: true,
       });
 
@@ -370,6 +386,37 @@ export default function ResaleMarketPage() {
                   ))}
                 </div>
               )}
+
+              <div className='space-y-3'>
+                <div className='text-xs font-bold uppercase tracking-wider text-[#52525b]'>
+                  Vui lòng điền số tài khoản nhận tiền trong trường hợp sự kiện bị hủy
+                </div>
+                <p className='text-[11px] text-[#71717a]'>Thông tin này chỉ được sử dụng để hoàn tiền nếu sự kiện bị hủy.</p>
+                <select
+                  required
+                  value={refundBankInfo.bankName}
+                  onChange={(e) => setRefundBankInfo((p) => ({ ...p, bankName: e.target.value }))}
+                  className='w-full border border-[#e4e4e7] rounded-lg px-3 py-2 text-xs'
+                >
+                  <option value=''>Chọn ngân hàng</option>
+                  {VIETNAMESE_BANKS.map((bank) => <option key={bank.code} value={bank.name}>{bank.name}</option>)}
+                </select>
+                <input
+                  required
+                  inputMode='numeric'
+                  value={refundBankInfo.accountNo}
+                  onChange={(e) => setRefundBankInfo((p) => ({ ...p, accountNo: e.target.value.replace(/\D/g, '') }))}
+                  placeholder='Số tài khoản nhận tiền'
+                  className='w-full border border-[#e4e4e7] rounded-lg px-3 py-2 text-xs'
+                />
+                <input
+                  required
+                  value={refundBankInfo.accountHolder}
+                  onChange={(e) => setRefundBankInfo((p) => ({ ...p, accountHolder: e.target.value.toUpperCase() }))}
+                  placeholder='Tên chủ tài khoản'
+                  className='w-full border border-[#e4e4e7] rounded-lg px-3 py-2 text-xs uppercase'
+                />
+              </div>
 
               <div className='text-xs space-y-3 text-[#52525b]'>
                 <label className='flex items-start gap-2.5 cursor-pointer'>

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Loader2, FileText, Check, X, Calendar, MapPin, Star, Flame, Sparkles, Ban, Upload, Eye, ExternalLink } from 'lucide-react';
+import { Loader2, FileText, Check, X, Calendar, MapPin, Star, Flame, Sparkles, Ban, Eye, ExternalLink } from 'lucide-react';
 import { api } from '../../api/client';
 import { useToast } from '../../context/ToastContext';
 import { inputCls } from '../../components/FormField';
+import SeatmapPreview from '../../features/seatmap/SeatmapPreview';
 
 const BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/v1';
 const money = (n) => `${Number(n || 0).toLocaleString('vi-VN')} ₫`;
@@ -135,8 +136,6 @@ export default function AdminEventsPage() {
   const [busy, setBusy] = useState('');
   const [dlg, setDlg] = useState(null); // { type: approve|reject|refund|commission|seatmap, target }
   const [form, setForm] = useState({ rate: '', terms: '', reason: '' });
-  const [files, setFiles] = useState({ svg: null, xlsx: null });
-  const [seatResult, setSeatResult] = useState(null);
   const [detail, setDetail] = useState(null); // { loading, data } panel chi tiết khi duyệt
 
   const load = useCallback(async () => {
@@ -162,12 +161,9 @@ export default function AdminEventsPage() {
 
   const close = () => {
     setDlg(null);
-    setSeatResult(null);
-    setFiles({ svg: null, xlsx: null });
   };
   const openDlg = (type, target) => {
     setForm({ rate: target.lastCommissionRatePct ?? target.defaultCommissionPct ?? target.commissionRatePct ?? '10', terms: '', reason: '' });
-    setSeatResult(null);
     setDlg({ type, target });
   };
 
@@ -224,24 +220,6 @@ export default function AdminEventsPage() {
     run('commission', () => api.put(`/admin/contracts/${dlg.target.id}/commission`, { commissionRatePct: rate }), () => 'Đã cập nhật hoa hồng');
   };
   const feature = (e, patch) => run(`f:${e._id}`, () => api.put(`/admin/events/${e._id}/featured`, patch), () => 'Đã cập nhật trang chủ');
-
-  const submitSeatmap = async (dryRun) => {
-    if (!files.svg || !files.xlsx) return showToast('Chọn đủ file SVG và Excel');
-    const fd = new FormData();
-    fd.append('svgFile', files.svg);
-    fd.append('excelFile', files.xlsx);
-    setBusy('seat');
-    setSeatResult(null);
-    try {
-      const r = await api.post(`/admin/events/${dlg.target._id}/seatmap${dryRun ? '?dryRun=true' : ''}`, fd);
-      setSeatResult({ ok: true, message: r.message, summary: r.summary });
-      if (!dryRun) showToast('Đã dựng sơ đồ chỗ ngồi');
-    } catch (err) {
-      setSeatResult({ ok: false, message: err.message, details: err.data?.details });
-    } finally {
-      setBusy('');
-    }
-  };
 
   return (
     <div className='space-y-6'>
@@ -342,7 +320,7 @@ export default function AdminEventsPage() {
                   )}
                   {['PENDING', 'APPROVED', 'PUBLISHED'].includes(tab) && (
                     <button type='button' className='tb-btn tb-btn-outline tb-btn-sm' onClick={() => openDlg('seatmap', e)}>
-                      <Upload size={13} /> Sơ đồ ghế
+                      <Eye size={13} /> Sơ đồ ghế
                     </button>
                   )}
                   {tab === 'PUBLISHED' && (
@@ -388,7 +366,7 @@ export default function AdminEventsPage() {
         <div className='fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50' onClick={close}>
           <div className='bg-white rounded-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto p-6 space-y-4' onClick={(e) => e.stopPropagation()}>
             <h3 className='font-bold'>
-              {{ approve: 'Duyệt sự kiện', reject: 'Từ chối sự kiện', refund: 'Huỷ sự kiện & hoàn tiền hàng loạt', commission: 'Sửa hoa hồng hợp đồng', seatmap: 'Dựng sơ đồ chỗ ngồi' }[dlg.type]}
+              {{ approve: 'Duyệt sự kiện', reject: 'Từ chối sự kiện', refund: 'Huỷ sự kiện & hoàn tiền hàng loạt', commission: 'Sửa hoa hồng hợp đồng', seatmap: 'Sơ đồ chỗ ngồi nhà tổ chức đã tải' }[dlg.type]}
               <span className='block text-sm font-normal text-[#71717a] mt-0.5'>{dlg.target.title || dlg.target.eventTitle}</span>
             </h3>
 
@@ -413,35 +391,10 @@ export default function AdminEventsPage() {
               </div>
             )}
 
-            {dlg.type === 'seatmap' && (
-              <div className='space-y-3'>
-                <p className='text-xs text-[#52525b]'>
-                  Tải 2 file nhà tổ chức gửi: <code>zone_map.svg</code> và <code>seating_manifest.xlsx</code>. Mẫu:{' '}
-                  <a className='underline' href={`${BASE}/admin/seatmap/template.svg`}>SVG</a>, <a className='underline' href={`${BASE}/admin/seatmap/template.xlsx`}>Excel</a>. Hạng vé trong Excel phải khớp tên hạng vé của sự kiện.
-                </p>
-                {[['svg', 'File SVG', '.svg,image/svg+xml'], ['xlsx', 'File Excel', '.xlsx']].map(([k, t, acc]) => (
-                  <div key={k}>
-                    <label htmlFor={`sm-${k}`} className={label}>{t}</label>
-                    <input id={`sm-${k}`} type='file' accept={acc} className='text-sm' onChange={(e) => setFiles({ ...files, [k]: e.target.files?.[0] || null })} />
-                  </div>
-                ))}
-                {seatResult && (
-                  <div className={`text-xs rounded-lg px-3 py-2 border ${seatResult.ok ? 'bg-[#f4f4f6] border-[#e4e4e7]' : 'bg-red-50 border-red-200 text-red-700'}`}>
-                    <div className='font-semibold'>{seatResult.message}</div>
-                    {seatResult.details && <pre className='mt-1 whitespace-pre-wrap break-words'>{JSON.stringify(seatResult.details, null, 1).slice(0, 800)}</pre>}
-                    {seatResult.summary && <pre className='mt-1 whitespace-pre-wrap break-words'>{JSON.stringify(seatResult.summary, null, 1).slice(0, 600)}</pre>}
-                  </div>
-                )}
-              </div>
-            )}
+            {dlg.type === 'seatmap' && <SeatmapPreview eventId={dlg.target._id} scope='admin' />}
 
             <div className='flex flex-wrap gap-3 pt-1'>
-              {dlg.type === 'seatmap' ? (
-                <>
-                  <button type='button' className='tb-btn tb-btn-outline' disabled={busy === 'seat'} onClick={() => submitSeatmap(true)}>Kiểm tra trước</button>
-                  <button type='button' className='tb-btn tb-btn-solid' disabled={busy === 'seat'} onClick={() => submitSeatmap(false)}>{busy === 'seat' ? 'Đang xử lý...' : 'Dựng sơ đồ'}</button>
-                </>
-              ) : (
+              {dlg.type === 'seatmap' ? null : (
                 <button
                   type='button'
                   className='tb-btn tb-btn-solid'

@@ -42,6 +42,7 @@ exports.createBooking = async (req, res) => {
       req.body.sessionId || (Array.isArray(rawItems) && rawItems[0]?.sessionId);
     const attendeeFormAnswers = req.body.attendeeFormAnswers || req.body.attendee_form_answers || req.body.attendeeAnswers;
     const vatInvoiceInfo = req.body.vatInvoiceInfo || req.body.vat_invoice_info || req.body.vatInfo;
+    const refundBankInfo = req.body.refundBankInfo || req.body.refund_bank_info;
 
     if (!eventId || !sessionId || !Array.isArray(rawItems) || rawItems.length === 0) {
       return res.status(400).json({ success: false, message: "Thiếu thông tin đặt vé" });
@@ -55,6 +56,7 @@ exports.createBooking = async (req, res) => {
       voucherCode,
       attendeeFormAnswers,
       vatInvoiceInfo,
+      refundBankInfo,
     });
 
     res.json({
@@ -77,12 +79,14 @@ exports.updateCheckoutInfo = async (req, res) => {
   try {
     const attendeeFormAnswers = req.body.attendeeFormAnswers || req.body.attendee_form_answers || req.body.attendeeAnswers;
     const vatInvoiceInfo = req.body.vatInvoiceInfo || req.body.vat_invoice_info || req.body.vatInfo;
+    const refundBankInfo = req.body.refundBankInfo || req.body.refund_bank_info;
 
     const order = await bookingService.updateCheckoutInfo({
       orderId: req.params.orderId,
       buyerId: req.user.id,
       attendeeFormAnswers,
       vatInvoiceInfo,
+      refundBankInfo,
     });
 
     res.json({
@@ -127,6 +131,7 @@ exports.myTickets = async (req, res) => {
       .populate("event_id", "title banner_url venue_name")
       .populate("tier_id", "name price")
       .populate("session_id", "name start_time end_time status")
+      .populate("order_id", "order_code subtotal_amount total_amount discount_amount items_snapshot")
       .sort({ _id: -1 });
 
     // Tin bán lại của các vé đang bán / đã bán: để hiện trạng thái giữ chỗ & chi trả
@@ -169,13 +174,20 @@ exports.myTickets = async (req, res) => {
 
         return {
           _id: t._id,
-          orderId: t.order_id,
+          orderId: t.order_id?._id || t.order_id,
           ticketCode: t.ticket_code,
           qrHash: t.qr_hash_signature,
           eventId: t.event_id?._id || t.event_id,
           eventName: t.event_id?.title || "Sự kiện",
           ticketName: t.tier_id?.name || "Hạng vé",
-          ticketPrice: t.tier_id?.price,
+          ticketPrice: (() => {
+            const order = t.order_id;
+            const item = order?.items_snapshot?.find((line) => String(line.tier_id) === String(t.tier_id?._id || t.tier_id));
+            const unitPrice = Number(item?.unit_price ?? t.tier_id?.price ?? 0);
+            const subtotal = Number(order?.subtotal_amount || 0);
+            const total = Number(order?.total_amount ?? subtotal);
+            return subtotal > 0 ? Math.max(0, Math.round((unitPrice * total) / subtotal)) : unitPrice;
+          })(),
           quantity: 1,
           status: statusLabel[t.status] || t.status,
           rawStatus: t.status,
@@ -279,6 +291,7 @@ exports.getOrder = async (req, res) => {
       body.session = session && { _id: session._id, name: session.name, startTime: session.start_time };
       body.formSchema = Array.isArray(event?.custom_form_schema) ? event.custom_form_schema : [];
       body.attendeeFormAnswers = order.attendee_form_answers && !Array.isArray(order.attendee_form_answers) ? order.attendee_form_answers : {};
+      body.refundBankInfo = order.refund_bank_info || {};
     }
     res.json(body);
   } catch (err) {

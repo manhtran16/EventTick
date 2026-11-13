@@ -1,4 +1,3 @@
-const multer = require("multer");
 const cheerio = require("cheerio");
 const ExcelJS = require("exceljs");
 const { Event, EventSession, TicketTier, Seat, SeatmapLayout } = require("../models");
@@ -9,26 +8,18 @@ const { SAMPLE_SVG, buildSampleWorkbookBuffer } = require("../utils/seatmapTempl
 const { seatsOfSection, previewSeats } = require("../utils/seatGrid");
 
 /**
- * Sơ đồ chỗ ngồi — đầu vào gồm 2 file do Organizer gửi, Admin tải lên:
- *   1. zone_map.svg          : mặt bằng; khu bán vé có id "SEC_...", sân khấu có id "STAGE_..."
- *   2. seating_manifest.xlsx : mỗi khu bao nhiêu ghế / hàng / lối đi / ghế khóa, hoặc sức chứa nếu là khu đứng (GA)
- * Hạng vé (ticket_tiers) do Organizer tạo sẵn; Excel nối khu với hạng vé qua cột Tier_Name.
+ * Sơ đồ chỗ ngồi: Organizer tải file ngay lúc tạo sự kiện (POST /events, xem applyUploadedLayout), ghi qua commitLayout.
+ *   - Vé đứng (GA_SVG): chỉ zone_map.svg (khu bán vé id "SEC_...", sân khấu id "STAGE_...") + danh sách gắn khu với hạng vé
+ *   - Vé ngồi (SEATED_FILE): zone_map.svg + seating_manifest.xlsx (khu, hàng, số ghế, lối đi, ghế khóa)
  *   events (1) -> (1) seatmap_layouts (SVG + cấu hình khu)
  *   khu SEATED -> seats (mỗi suất diễn một bản)        khu GA -> bán theo số lượng của hạng vé
  */
-const MAX_FILE = 5 * 1024 * 1024;
 const MAX_SEATS_PER_SESSION = 10000;
 const MAX_SEATS_TOTAL = 60000;
-const IMPORTABLE = ["DRAFT", "PENDING", "APPROVED", "PUBLISHED"];
-
-exports.importUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_FILE } }).fields([
-  { name: "svgFile", maxCount: 1 },
-  { name: "excelFile", maxCount: 1 },
-]);
 
 const norm = (s) => String(s ?? "").trim().replace(/\s+/g, " ").toLowerCase();
 const fail = (message, details, code = 400) => {
-  const e = httpError(message, code);
+  const e = httpError(details ? message + ": " + JSON.stringify(details) : message, code);
   if (details) e.details = details;
   return e;
 };
@@ -165,38 +156,104 @@ async function parseManifest(buffer) {
 
 const publicSection = (s) => ({ sectionId: s.section_id, name: s.name, type: s.type, tierName: s.tier_name, layout: s.layout || "STRAIGHT", capacity: s.capacity, rows: s.rows.length });
 
-// ------------------------------------------------------------------ Admin: dựng sơ đồ
-// POST /v1/admin/events/:id/seatmap   (multipart: svgFile + excelFile; ?dryRun=true chỉ kiểm tra, không ghi)
-async function runImport(req, res, { ownerOnly = false } = {}) {
-  const event = await Event.findOne({
-    _id: validId(req.params.id, "ID sự kiện"),
-    ...(ownerOnly ? { organizer_id: req.user.id } : {}),
-  });
-  if (!event) throw httpError("Không tìm thấy sự kiện", 404);
-  // Organizer tự dựng được khi DRAFT / PENDING / APPROVED. Khi PUBLISHED chỉ được nếu chưa có vé nào đã bán hoặc đang giữ
-  // (kiểm tra chi tiết theo từng hạng vé ở bước 4 bên dưới và ở đây theo toàn sự kiện).
-  if (ownerOnly && !["DRAFT", "PENDING", "APPROVED", "PUBLISHED"].includes(event.status)) {
-    throw fail(`Không dựng sơ đồ được khi sự kiện ở trạng thái ${event.status}`, null, 409);
-  }
-  if (ownerOnly && event.status === "PUBLISHED") {
-    const sold = await TicketTier.countDocuments({ event_id: event._id, $expr: { $lt: ["$available_quantity", "$total_quantity"] } });
-    if (sold > 0) throw fail("Sự kiện đã bán hoặc đang giữ vé nên không tự dựng lại sơ đồ được. Hãy liên hệ Admin.", null, 409);
-  }
-  if (!IMPORTABLE.includes(event.status)) throw fail(`Không dựng sơ đồ được khi sự kiện ở trạng thái ${event.status}`, null, 409);
-
-  const svgFile = req.files?.svgFile?.[0], xlsFile = req.files?.excelFile?.[0];
-  if (!svgFile || !xlsFile) throw fail("Cần tải lên đủ 2 file: svgFile (zone_map.svg) và excelFile (seating_manifest.xlsx)");
-
-  const { svg, sectionIds, stageIds } = parseSvg(svgFile.buffer);
-  const sections = await parseManifest(xlsFile.buffer);
-
-  // 1. Khu trong SVG và Excel phải khớp 100%
+// ------------------------------------------------------------------ Dựng sơ đồ
+/** SVG + Excel -> { svg, stageIds, sections }; khu trong hai file phải khớp 100%. */
+async function buildFromSvgExcel(svgBuf, xlsBuf) {
+  const { svg, sectionIds, stageIds } = parseSvg(svgBuf);
+  const sections = await parseManifest(xlsBuf);
   const inExcel = new Set(sections.map((s) => s.section_id)), inSvg = new Set(sectionIds);
   const onlyInSvg = sectionIds.filter((id) => !inExcel.has(id)), onlyInExcel = [...inExcel].filter((id) => !inSvg.has(id));
   if (onlyInSvg.length || onlyInExcel.length) {
     throw fail("Danh sách khu trong SVG và Excel không khớp", { onlyInSvg, onlyInExcel });
   }
+  return { svg, stageIds, sections };
+}
 
+/**
+ * Chỉ SVG (vé đứng): mỗi khu SEC_ gắn với đúng một hạng vé GA; tên khu, sức chứa lấy từ hạng vé. Không cần Excel.
+ * zones = [{ sectionId, tierName }]; mọi khu trong SVG phải được gắn, mỗi hạng vé GA gắn đúng một khu.
+ */
+function buildFromSvgZones(svgBuf, zones, tiers) {
+  const { svg, sectionIds, stageIds } = parseSvg(svgBuf);
+  if (!Array.isArray(zones) || !zones.length) throw fail("Cần gắn mỗi khu trong SVG với một hạng vé");
+  const bySec = new Map(zones.map((z) => [String(z.sectionId), norm(z.tierName)]));
+  const unmapped = sectionIds.filter((id) => !bySec.has(id));
+  const unknown = [...bySec.keys()].filter((id) => !sectionIds.includes(id));
+  if (unmapped.length || unknown.length) throw fail("Khu trong SVG và danh sách gắn hạng vé không khớp", { unmappedSections: unmapped, unknownSections: unknown });
+  const tierByKey = new Map(tiers.map((t) => [norm(t.name), t]));
+  const seen = new Set();
+  const sections = sectionIds.map((id) => {
+    const key = bySec.get(id);
+    const t = tierByKey.get(key);
+    if (!t) throw fail(`Khu ${id}: hạng vé "${key}" không tồn tại`);
+    if (seen.has(key)) throw fail(`Hạng vé "${t.name}" đang gắn cho nhiều khu; mỗi hạng vé đứng chỉ một khu`);
+    seen.add(key);
+    return { section_id: id, name: t.name, type: "GA", tier_name: t.name, layout: "STRAIGHT", capacity: t.total_quantity, rows: [] };
+  });
+  const lack = tiers.filter((t) => !seen.has(norm(t.name))).map((t) => t.name);
+  if (lack.length) throw fail("Có hạng vé chưa được gắn với khu nào trong SVG", { tiers: lack });
+  return { svg, stageIds, sections };
+}
+
+/** Vé ngồi chỉ chứa khu SEATED: khu vé đứng thuộc sự kiện "Vé đứng". */
+function seatedOnly(built) {
+  const ga = built.sections.filter((s) => s.type !== "SEATED").map((s) => s.section_id);
+  if (ga.length) throw fail('Sự kiện "Vé ngồi" chỉ chứa khu ghế đánh số (Type = SEATED). Khu vé đứng hãy tạo ở sự kiện "Vé đứng"', { standingSections: ga });
+  return built;
+}
+
+/** Hạng vé suy ra từ Excel: mỗi Tier_Name một hạng, số lượng = tổng ghế bán được của các khu thuộc hạng đó. */
+function seatedTiersOf(sections) {
+  const m = new Map();
+  for (const s of sections) {
+    const k = norm(s.tier_name);
+    const t = m.get(k) || { name: s.tier_name, quantity: 0 };
+    t.quantity += s.capacity;
+    m.set(k, t);
+  }
+  return [...m.values()];
+}
+
+async function builtSeated(files) {
+  const list = Array.isArray(files) ? files : Object.values(files || {}).flat();
+  const svg = list.find((f) => f.fieldname === "svgFile"), xls = list.find((f) => f.fieldname === "excelFile");
+  if (!svg || !xls) throw fail("Cần tải đủ 2 file: SVG và Excel");
+  const built = seatedOnly(await buildFromSvgExcel(svg.buffer, xls.buffer));
+  const seats = built.sections.reduce((n, s) => n + s.capacity, 0);
+  if (seats > MAX_SEATS_PER_SESSION) throw fail(`Quá nhiều ghế (tối đa ${MAX_SEATS_PER_SESSION} ghế mỗi suất)`);
+  return built;
+}
+
+/**
+ * Dùng ngay khi tạo sự kiện (file đi cùng request). mode: "GA_SVG" (chỉ SVG) | "SEATED_FILE" (SVG + Excel).
+ * Lỗi thì nơi gọi rollback cả sự kiện.
+ */
+async function applyUploadedLayout(req, event, { mode, svgBuffer, excelBuffer, zones }) {
+  if (!svgBuffer) throw fail("Cần tải file SVG mặt bằng");
+  if (mode === "SEATED_FILE") {
+    if (!excelBuffer) throw fail("Ghế đánh số cần cả file SVG và file Excel");
+    const built = seatedOnly(await buildFromSvgExcel(svgBuffer, excelBuffer));
+    // Tên hạng vé lấy từ file Excel: mọi suất phải có đúng bộ hạng vé đó (số lượng do commitLayout ghi theo số ghế)
+    const need = new Set(seatedTiersOf(built.sections).map((t) => norm(t.name)));
+    const [sessions, tiers] = await Promise.all([EventSession.find({ event_id: event._id }), TicketTier.find({ event_id: event._id })]);
+    for (const ses of sessions) {
+      const have = new Set(tiers.filter((t) => String(t.session_id) === String(ses._id)).map((t) => norm(t.name)));
+      if (have.size !== need.size || [...need].some((n) => !have.has(n))) throw fail(`Hạng vé của "${ses.name}" không khớp với file Excel`, { expected: [...need] });
+    }
+    return commitLayout(req, { event, ...built });
+  }
+  if (mode !== "GA_SVG") throw fail("Kiểu bố trí không hợp lệ");
+  const [sessions, tiers] = await Promise.all([EventSession.find({ event_id: event._id }).sort({ start_time: 1 }), TicketTier.find({ event_id: event._id })]);
+  if (!sessions.length) throw fail("Sự kiện chưa có suất diễn");
+  const first = tiers.filter((t) => String(t.session_id) === String(sessions[0]._id));
+  if (first.some((t) => t.zone_type === "SEATED")) throw fail("Vé đứng không được có hạng vé ghế đánh số");
+  return commitLayout(req, { event, ...buildFromSvgZones(svgBuffer, zones, first) });
+}
+
+/**
+ * Phần dùng chung cho mọi cách dựng (file hoặc tự vẽ): kiểm tra hạng vé, sinh ghế, lưu layout.
+ */
+async function commitLayout(req, { event, svg, stageIds, sections }) {
   // 2. Khu GA: mỗi khu một hạng vé riêng (GA bán theo số lượng của hạng vé); không trộn GA với SEATED trong 1 hạng vé
   const tierUse = new Map();
   for (const s of sections) {
@@ -238,7 +295,6 @@ async function runImport(req, res, { ownerOnly = false } = {}) {
     seatedPerSession: seatedTotal,
     gaCapacity: sections.filter((s) => s.type === "GA").reduce((n, s) => n + s.capacity, 0),
   };
-  if (String(req.query.dryRun) === "true") return res.json({ success: true, dryRun: true, message: "File hợp lệ (chưa lưu)", summary, svgContent: svg, seats: previewSeats(sections.map((x) => ({ ...x, section_id: x.section_id }))) });
 
   // 4. Đã có vé bán / đang giữ ở các hạng vé bị ảnh hưởng -> không dựng lại
   const touched = new Set(tiers.filter((t) => t.zone_type === "SEATED").map((t) => String(t._id)));
@@ -282,20 +338,51 @@ async function runImport(req, res, { ownerOnly = false } = {}) {
   );
   await H.recalcEvent(event._id);
   await audit(req, "SEATMAP_IMPORT", "events", event._id, { sections: sections.length, seatsPerSession: seatedTotal, sessions: sessions.length });
-  res.status(201).json({ success: true, message: "Đã dựng sơ đồ chỗ ngồi", summary });
+  return { summary };
 }
-const importWith = (opts) =>
-  ah(async (req, res) => {
-    try {
-      await runImport(req, res, opts);
-    } catch (err) {
-      if (!err.details) throw err; // ah() trả đúng mã lỗi
-      res.status(err.statusCode || 400).json({ success: false, message: err.message, details: err.details });
-    }
-  });
-exports.importSeatmap = importWith({});
-// POST /v1/organizer/events/:id/seatmap — Organizer tự dựng sơ đồ cho sự kiện của mình
-exports.organizerImportSeatmap = importWith({ ownerOnly: true });
+
+exports.applyUploadedLayout = applyUploadedLayout;
+exports.builtSeated = builtSeated;
+exports.seatedTiersOf = seatedTiersOf;
+
+// POST /v1/organizer/seatmap/parse (multipart svgFile + excelFile): đọc file, không ghi DB. Trả hạng vé suy ra từ Excel + bản xem trước.
+exports.parseSeated = ah(async (req, res) => {
+  try {
+    const built = await builtSeated(req.files);
+    res.json({
+      success: true,
+      tiers: seatedTiersOf(built.sections),
+      summary: { sections: built.sections.map(publicSection), stageIds: built.stageIds, seatedPerSession: built.sections.reduce((n, s) => n + s.capacity, 0) },
+      svgContent: built.svg,
+      seats: previewSeats(built.sections),
+    });
+  } catch (err) {
+    if (!err.details) throw err;
+    res.status(err.statusCode || 400).json({ success: false, message: err.message, details: err.details });
+  }
+});
+
+// PUT /v1/organizer/events/:id/seatmap: thay sơ đồ khi sự kiện còn là bản nháp (hạng vé phải khớp với file, kiểm tra trong applyUploadedLayout)
+exports.replaceLayout = ah(async (req, res) => {
+  const event = await Event.findOne({ _id: validId(req.params.id, "ID sự kiện"), organizer_id: req.user.id });
+  if (!event) throw httpError("Không tìm thấy sự kiện", 404);
+  if (event.status !== "DRAFT") throw httpError("Chỉ thay được sơ đồ khi sự kiện còn là bản nháp", 409);
+  const files = Array.isArray(req.files) ? req.files : Object.values(req.files || {}).flat();
+  let zones;
+  try { zones = req.body.seatZones ? JSON.parse(req.body.seatZones) : undefined; } catch { throw httpError("seatZones không phải JSON hợp lệ", 400); }
+  try {
+    const r = await applyUploadedLayout(req, event, {
+      mode: String(req.body.seatLayout || "").toUpperCase(),
+      svgBuffer: files.find((f) => f.fieldname === "svgFile")?.buffer,
+      excelBuffer: files.find((f) => f.fieldname === "excelFile")?.buffer,
+      zones,
+    });
+    res.json({ success: true, message: "Đã thay sơ đồ", summary: r.summary });
+  } catch (err) {
+    if (!err.details) throw err;
+    res.status(err.statusCode || 400).json({ success: false, message: err.message, details: err.details });
+  }
+});
 
 // GET /v1/admin/events/:id/seatmap — sơ đồ hiện tại của sự kiện (Admin: mọi sự kiện; Organizer: sự kiện của mình)
 exports.adminGet = ah(async (req, res) => {

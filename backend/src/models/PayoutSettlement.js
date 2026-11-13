@@ -17,6 +17,7 @@ const schema = new Schema(
     rejected_by_admin: ref("User"),
     settled_by_admin: ref("User"),
     settled_at: { type: Date },
+    created_at: { type: Date, default: Date.now, required: true },
   },
   options,
 );

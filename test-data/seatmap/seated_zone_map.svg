@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 700">
+  <path id="STAGE_MAIN" data-center="500,40" d="M350,40 L650,40 A150,150 0 0 1 350,40 Z" fill="#9ca3af"/>
+  <text x="500" y="118" text-anchor="middle" fill="#fff" font-size="40" font-family="sans-serif">STAGE</text>
+
+  <path id="SEC_VIP_L" d="M320.0,254.5 A280 280 0 0 0 485.3,319.6 L490.6,219.8 A180 180 0 0 1 384.3,177.9 Z"/>
+  <path id="SEC_VIP_R" d="M514.7,319.6 A280 280 0 0 0 680.0,254.5 L615.7,177.9 A180 180 0 0 1 509.4,219.8 Z"/>
+  <path id="SEC_CAT1_L" d="M201.2,290.7 A390 390 0 0 0 479.6,429.5 L484.8,329.6 A290 290 0 0 1 277.8,226.4 Z"/>
+  <path id="SEC_CAT1_R" d="M520.4,429.5 A390 390 0 0 0 798.8,290.7 L722.2,226.4 A290 290 0 0 1 515.2,329.6 Z"/>
+  <rect id="FOH" x="440" y="655" width="120" height="30" fill="#555"/>
+</svg>

@@ -12,6 +12,9 @@ import {
   BarChart3,
   ScanLine,
   History,
+  X,
+  ClipboardList,
+  CheckCircle2,
 } from 'lucide-react';
 import { api } from '../../api/client';
 import { useToast } from '../../context/ToastContext';
@@ -67,21 +70,23 @@ function Stat({ label, value, sub }) {
   );
 }
 
-function Answers({ a }) {
-  const entries = a && !Array.isArray(a) ? Object.entries(a) : [];
-  if (!entries.length) return <span className='text-[#a1a1aa]'>—</span>;
+function AnswerButton({ title, answers, onInspect }) {
+  const hasAnswers = answers && typeof answers === 'object' && Object.keys(answers).length > 0;
+  if (!hasAnswers) return <span className='text-[#a1a1aa] text-xs'>—</span>;
+  const count = Object.keys(answers).length;
+
   return (
-    <div className='space-y-0.5'>
-      {entries.map(([k, v]) => (
-        <div key={k} className='text-xs'>
-          <span className='text-[#71717a]'>{k}:</span> {typeof v === 'boolean' ? (v ? 'Có' : 'Không') : String(v)}
-        </div>
-      ))}
-    </div>
+    <button
+      type='button'
+      onClick={() => onInspect({ title, answers })}
+      className='inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-[#e4e4e7] rounded-lg text-xs font-semibold text-[#09090b] hover:border-[#09090b] hover:bg-[#f9f9fb] transition-colors'>
+      <ClipboardList size={12} />
+      <span>Khảo sát ({count})</span>
+    </button>
   );
 }
 
-/** Quản lý một sự kiện: thống kê (UC31, UC32), đơn hàng + người tham dự (UC29), nhân viên (UC30), xuất CSV (UC33), đối soát (UC34). */
+/** Quản lý một sự kiện: thống kê (UC31, UC32), đơn hàng + người tham dự (UC29), nhân viên (UC30), xuất Excel (UC33), đối soát (UC34). */
 export default function OrganizerEventDashboardPage() {
   const { id } = useParams();
   const { showToast } = useToast();
@@ -91,6 +96,9 @@ export default function OrganizerEventDashboardPage() {
   const [search, setSearch] = useState('');
   const [staffForm, setStaffForm] = useState({ email: '', assignedGate: 'Cổng chính' });
   const [busy, setBusy] = useState(false);
+  const [inspectItem, setInspectItem] = useState(null);
+  const [payoutConfirm, setPayoutConfirm] = useState(false);
+  const [payoutSuccess, setPayoutSuccess] = useState(null);
 
   const load = useCallback(
     async (which) => {
@@ -122,7 +130,7 @@ export default function OrganizerEventDashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, id]);
 
-  const exportCsv = (kind) => window.open(`${BASE}/organizer/events/${id}/export/${kind}`, '_blank', 'noopener');
+  const exportExcel = (kind) => window.open(`${BASE}/organizer/events/${id}/export/${kind}`, '_blank', 'noopener');
 
   const addStaff = async (e) => {
     e.preventDefault();
@@ -155,12 +163,17 @@ export default function OrganizerEventDashboardPage() {
     }
   };
 
-  const requestPayout = async () => {
-    if (!window.confirm('Gửi yêu cầu đối soát và rút tiền cho sự kiện này?')) return;
+  const requestPayout = () => setPayoutConfirm(true);
+
+  const submitPayout = async () => {
+    setPayoutConfirm(false);
     setBusy(true);
     try {
       const r = await api.post(`/organizer/events/${id}/payout/request`, {});
-      showToast(r.message || 'Đã gửi yêu cầu đối soát');
+      setPayoutSuccess({
+        message: r.message || 'Đã gửi yêu cầu đối soát và rút tiền thành công!',
+        amount: ps?.netPayoutAmount,
+      });
       load('payout');
     } catch (err) {
       showToast(err.message || 'Không gửi được yêu cầu');
@@ -259,12 +272,12 @@ export default function OrganizerEventDashboardPage() {
               </tbody>
             </table>
           </div>
-          <div className='flex flex-wrap gap-3'>
-            <button type='button' className='tb-btn tb-btn-outline' onClick={() => exportCsv('orders')}>
-              <Download size={14} /> Xuất đơn hàng (CSV)
+          <div className='flex flex-wrap items-center gap-3'>
+            <button type='button' className='tb-btn tb-btn-outline' onClick={() => exportExcel('orders')}>
+              <Download size={14} /> Xuất đơn hàng (Excel)
             </button>
-            <button type='button' className='tb-btn tb-btn-outline' onClick={() => exportCsv('attendees')}>
-              <Download size={14} /> Xuất người tham dự (CSV)
+            <button type='button' className='tb-btn tb-btn-outline' onClick={() => exportExcel('attendees')}>
+              <Download size={14} /> Xuất người tham dự (Excel)
             </button>
           </div>
         </div>
@@ -303,7 +316,11 @@ export default function OrganizerEventDashboardPage() {
                     <td>{money(o.totalAmount)}</td>
                     <td>{ORDER_STATUS[o.status] || o.status}</td>
                     <td>
-                      <Answers a={o.attendeeFormAnswers} />
+                      <AnswerButton
+                        title={`Đơn hàng ${o.orderCode} · ${o.buyer?.name || ''}`}
+                        answers={o.attendeeFormAnswers}
+                        onInspect={setInspectItem}
+                      />
                     </td>
                     <td className='text-xs text-[#52525b]'>{fmt(o.createdAt)}</td>
                   </tr>
@@ -349,7 +366,11 @@ export default function OrganizerEventDashboardPage() {
                     </td>
                     <td>{TICKET_STATUS[a.status] || a.status}</td>
                     <td>
-                      <Answers a={a.attendeeFormAnswers} />
+                      <AnswerButton
+                        title={`Vé ${a.ticketCode} · ${a.owner?.name || ''}`}
+                        answers={a.attendeeFormAnswers}
+                        onInspect={setInspectItem}
+                      />
                     </td>
                     <td className='text-xs text-[#52525b]'>{fmt(a.checkedInAt)}</td>
                   </tr>
@@ -358,7 +379,7 @@ export default function OrganizerEventDashboardPage() {
             </table>
           </div>
           <p className='text-xs text-[#71717a]'>
-            Tổng {data.attendees.total} vé. Dùng nút xuất CSV ở tab Tổng quan để lấy toàn bộ.
+            Tổng {data.attendees.total} vé. Dùng nút xuất Excel ở tab Tổng quan để tải file thống kê chi tiết.
           </p>
         </div>
       )}
@@ -484,6 +505,95 @@ export default function OrganizerEventDashboardPage() {
           <p className='text-xs text-[#71717a]'>
             Tiền được chuyển vào tài khoản ngân hàng trong hồ sơ KYC sau khi Admin duyệt đối soát.
           </p>
+        </div>
+      )}
+
+      {/* Modal xem câu trả lời khảo sát (UC26) */}
+      {inspectItem && (
+        <div
+          className='fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50'
+          onClick={() => setInspectItem(null)}>
+          <div
+            className='bg-white border border-[#e4e4e7] rounded-3xl p-6 sm:p-7 max-w-lg w-full space-y-5 shadow-2xl max-h-[85vh] overflow-y-auto'
+            onClick={(e) => e.stopPropagation()}>
+            <div className='flex justify-between items-start border-b border-[#f4f4f6] pb-3'>
+              <div>
+                <h3 className='text-base font-bold text-[#09090b]'>Chi tiết biểu mẫu &amp; Khảo sát</h3>
+                <p className='text-xs text-[#71717a] mt-0.5'>{inspectItem.title}</p>
+              </div>
+              <button
+                type='button'
+                onClick={() => setInspectItem(null)}
+                className='text-[#71717a] hover:text-[#09090b] p-1.5 rounded-lg hover:bg-[#f4f4f6] transition-colors'>
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Câu trả lời khảo sát */}
+            <div className='space-y-3'>
+              <h4 className='text-xs font-bold uppercase tracking-wider text-[#71717a] flex items-center gap-1.5'>
+                <ClipboardList size={14} /> Câu trả lời khảo sát
+              </h4>
+              {inspectItem.answers && typeof inspectItem.answers === 'object' && Object.keys(inspectItem.answers).length > 0 ? (
+                <div className='divide-y divide-[#f4f4f6] border border-[#e4e4e7] rounded-2xl overflow-hidden text-xs'>
+                  {Object.entries(inspectItem.answers).map(([k, v]) => (
+                    <div key={k} className='p-3.5 bg-white flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1.5'>
+                      <span className='font-semibold text-[#52525b]'>{k}:</span>
+                      <span className='font-bold text-[#09090b] sm:text-right break-words'>
+                        {typeof v === 'boolean' ? (v ? 'Có' : 'Không') : String(v ?? '—')}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className='text-xs text-[#a1a1aa] italic p-3 bg-[#f9f9fb] rounded-xl border border-dashed border-[#e4e4e7] text-center'>
+                  Không có câu trả lời khảo sát nào.
+                </p>
+              )}
+            </div>
+
+            <div className='pt-2 flex justify-end'>
+              <button
+                type='button'
+                onClick={() => setInspectItem(null)}
+                className='px-5 py-2.5 bg-[#09090b] text-white text-xs font-semibold rounded-full hover:bg-[#27272a] transition-colors'>
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {payoutConfirm && (
+        <div className='fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4' onClick={() => setPayoutConfirm(false)}>
+          <div className='relative bg-white rounded-2xl p-6 w-full max-w-md space-y-4 shadow-xl' onClick={(e) => e.stopPropagation()}>
+            <button type='button' onClick={() => setPayoutConfirm(false)} className='absolute top-4 right-4 text-[#71717a] hover:text-[#09090b]' aria-label='Đóng'>
+              <X size={18} />
+            </button>
+            <Wallet size={40} className='mx-auto text-[#09090b]' />
+            <h2 className='text-xl font-bold text-center'>Xác nhận yêu cầu đối soát</h2>
+            <p className='text-sm text-center text-[#52525b]'>Bạn có chắc muốn gửi yêu cầu đối soát và rút tiền cho sự kiện này?</p>
+            <div className='flex gap-3'>
+              <button type='button' className='tb-btn w-full' onClick={() => setPayoutConfirm(false)}>Hủy</button>
+              <button type='button' className='tb-btn tb-btn-solid w-full' onClick={submitPayout}>Xác nhận gửi</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {payoutSuccess && (
+        <div className='fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4' onClick={() => setPayoutSuccess(null)}>
+          <div className='relative bg-white rounded-2xl p-6 w-full max-w-md text-center space-y-4 shadow-xl' onClick={(e) => e.stopPropagation()}>
+            <button type='button' onClick={() => setPayoutSuccess(null)} className='absolute top-4 right-4 text-[#71717a] hover:text-[#09090b]' aria-label='Đóng'>
+              <X size={18} />
+            </button>
+            <CheckCircle2 size={48} className='mx-auto text-emerald-600' />
+            <h2 className='text-xl font-bold'>Đã gửi yêu cầu đối soát</h2>
+            <p className='text-sm text-[#52525b]'>{payoutSuccess.message}</p>
+            <p className='text-lg font-extrabold'>{money(payoutSuccess.amount)}</p>
+            <p className='text-xs text-[#71717a]'>Admin sẽ kiểm tra và chuyển khoản vào tài khoản ngân hàng trong hồ sơ KYC của bạn.</p>
+            <button type='button' className='tb-btn tb-btn-solid w-full' onClick={() => setPayoutSuccess(null)}>Đã hiểu</button>
+          </div>
         </div>
       )}
     </div>

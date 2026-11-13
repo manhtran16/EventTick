@@ -297,7 +297,7 @@ exports.getEventListings = ah(async (req, res) => {
 
 // POST /v1/resale/orders — Giữ chỗ các vé bán lại 10 phút, trả về orderId để sang trang thanh toán
 exports.createResaleOrder = ah(async (req, res) => {
-  const { eventId, listingIds, attendeeFormAnswers, voucherCode, agreeTerms } = req.body;
+  const { eventId, listingIds, attendeeFormAnswers, refundBankInfo, voucherCode, agreeTerms } = req.body;
   validId(eventId, "Mã sự kiện");
   if (agreeTerms !== true) throw httpError("Bạn cần đồng ý với Quy định sử dụng tính năng Bán lại vé", 400);
 
@@ -306,6 +306,7 @@ exports.createResaleOrder = ah(async (req, res) => {
     eventId,
     listingIds,
     attendeeFormAnswers,
+    refundBankInfo,
     voucherCode,
   });
 
