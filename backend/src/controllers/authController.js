@@ -6,10 +6,11 @@ const { userToClient } = require("../utils/serializers");
 const mailService = require("../utils/mailService");
 const { saveUploadedFile } = require("../utils/upload");
 
+const isProduction = process.env.NODE_ENV === "production" || process.env.RENDER === "true";
 const COOKIE_OPTS = {
   httpOnly: true,
-  sameSite: "lax",
-  secure: false, // đặt true khi deploy thật với HTTPS
+  sameSite: isProduction ? "none" : "lax",
+  secure: isProduction,
   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
 };
 
@@ -159,7 +160,7 @@ exports.login = async (req, res) => {
       return res.status(401).json({ success: false, message: "Sai tài khoản hoặc mật khẩu" });
     }
 
-    const ok = user.password_hash ? await bcrypt.compare(password, user.password_hash) : false;
+    const ok = await bcrypt.compare(password, user.password_hash);
     if (!ok) {
       return res.status(401).json({ success: false, message: "Sai tài khoản hoặc mật khẩu" });
     }
@@ -182,6 +183,7 @@ exports.login = async (req, res) => {
     res.json({
       success: true,
       message: "Đăng nhập thành công",
+      token,
       user: userToClient(user),
     });
   } catch (err) {
@@ -199,7 +201,7 @@ exports.logout = (req, res) => {
 // GET /auth  -> Header.jsx gọi cái này để biết đã đăng nhập chưa
 exports.me = async (req, res) => {
   if (!req.user) return res.json({ user: null });
-  const user = await User.findById(req.user.id).select("username email avatar_url full_name role status");
+  const user = await User.findById(req.user.id).select("username full_name role status");
   res.json({ user: user && user.status !== "BLOCKED" ? userToClient(user) : null });
 };
 

@@ -3,9 +3,21 @@ const bcrypt = require("bcryptjs");
 const User = require("../models/User");
 const { signToken } = require("../utils/jwt");
 
+const isProduction = process.env.NODE_ENV === "production" || process.env.RENDER === "true";
 const CLIENT_URL = () => process.env.CLIENT_URL || "http://localhost:5173";
-const COOKIE_OPTS = { httpOnly: true, sameSite: "lax", secure: false, maxAge: 7 * 24 * 60 * 60 * 1000 };
+const COOKIE_OPTS = {
+  httpOnly: true,
+  sameSite: isProduction ? "none" : "lax",
+  secure: isProduction,
+  maxAge: 7 * 24 * 60 * 60 * 1000,
+};
 const STATE_COOKIE = "g_oauth_state";
+const STATE_COOKIE_OPTS = {
+  httpOnly: true,
+  sameSite: isProduction ? "none" : "lax",
+  secure: isProduction,
+  maxAge: 10 * 60 * 1000,
+};
 
 function configured() {
   return process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_CALLBACK_URL;
@@ -18,7 +30,7 @@ function fail(res, code) {
 exports.start = (req, res) => {
   if (!configured()) return fail(res, "google_not_configured");
   const state = crypto.randomBytes(16).toString("hex");
-  res.cookie(STATE_COOKIE, state, { httpOnly: true, sameSite: "lax", maxAge: 10 * 60 * 1000 });
+  res.cookie(STATE_COOKIE, state, STATE_COOKIE_OPTS);
   const qs = new URLSearchParams({
     client_id: process.env.GOOGLE_CLIENT_ID,
     redirect_uri: process.env.GOOGLE_CALLBACK_URL,
@@ -36,7 +48,7 @@ exports.callback = async (req, res) => {
     const { code, state, error } = req.query;
     if (error) return fail(res, "google_denied");
     if (!code || !state || state !== req.cookies?.[STATE_COOKIE]) return fail(res, "invalid_state");
-    res.clearCookie(STATE_COOKIE);
+    res.clearCookie(STATE_COOKIE, STATE_COOKIE_OPTS);
 
     const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
       method: "POST",
@@ -85,7 +97,7 @@ exports.callback = async (req, res) => {
 
     const token = signToken({ id: user._id.toString(), username: user.username || user.email, role: user.role });
     res.cookie("token", token, COOKIE_OPTS);
-    res.redirect(`${CLIENT_URL()}/auth/google/success`);
+    res.redirect(`${CLIENT_URL()}/auth/google/success?token=${encodeURIComponent(token)}`);
   } catch (err) {
     console.error("Google callback error:", err);
     fail(res, "server_error");

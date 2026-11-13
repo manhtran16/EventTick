@@ -10,7 +10,7 @@ const STATUS = {
   VERIFIED: { label: 'Đã được duyệt', cls: 'bg-[#09090b] text-white border-[#09090b]', icon: ShieldCheck },
   REJECTED: { label: 'Bị từ chối', cls: 'bg-red-50 text-red-700 border-red-200', icon: XCircle },
 };
-const EMPTY = { organizationName: '', businessType: 'INDIVIDUAL', taxCode: '', bankName: '', bankAccountNo: '', bankAccountHolder: '' };
+const EMPTY = { organizationName: '', businessType: 'INDIVIDUAL', taxCode: '', phone: '', bankName: '', bankAccountNo: '', bankAccountHolder: '' };
 const label = 'block text-xs font-semibold uppercase tracking-wider text-[#52525b] mb-1.5';
 
 /** UC21: nộp hồ sơ pháp nhân (KYC). Giấy tờ lưu kho riêng tư, chỉ Admin và chính chủ xem được. */
@@ -36,10 +36,13 @@ export default function OrganizerKycPage() {
           organizationName: r.profile.organizationName || '',
           businessType: r.profile.businessType || 'INDIVIDUAL',
           taxCode: r.profile.taxCode || '',
+          phone: r.profile.phone || user?.phone || '',
           bankName: r.profile.bankName || '',
           bankAccountNo: r.profile.bankAccountNo || '',
           bankAccountHolder: r.profile.bankAccountHolder || '',
         });
+      } else {
+        setForm({ ...EMPTY, phone: user?.phone || '' });
       }
     } catch (err) {
       showToast(err.message || 'Không tải được hồ sơ KYC');
@@ -76,6 +79,7 @@ export default function OrganizerKycPage() {
   const submit = async (e) => {
     e.preventDefault();
     if (!/^\d{10}(-?\d{3})?$/.test(form.taxCode.trim())) return showToast('Mã số thuế phải gồm 10 hoặc 13 chữ số');
+    if (!/^[0-9+\s]{8,15}$/.test(form.phone.trim())) return showToast('Số điện thoại không hợp lệ');
     if (!/^\d{6,20}$/.test(form.bankAccountNo.trim())) return showToast('Số tài khoản chỉ gồm 6–20 chữ số');
     if (!file && !profile?.hasDocument) return showToast('Vui lòng tải lên giấy tờ (CCCD hoặc giấy phép ĐKKD)');
 
@@ -83,6 +87,7 @@ export default function OrganizerKycPage() {
     fd.append('organizationName', form.organizationName.trim());
     fd.append('businessType', form.businessType);
     fd.append('taxCode', form.taxCode.trim());
+    fd.append('phone', form.phone.trim());
     fd.append('bankName', form.bankName.trim());
     fd.append('bankAccountNo', form.bankAccountNo.trim());
     fd.append('bankAccountHolder', form.bankAccountHolder.trim().toUpperCase());
@@ -139,7 +144,7 @@ export default function OrganizerKycPage() {
             <label htmlFor='k-org' className={label}>Tên đơn vị / cá nhân tổ chức</label>
             <input id='k-org' required className={inputCls} value={form.organizationName} onChange={set('organizationName')} />
           </div>
-          <div className='grid gap-4 sm:grid-cols-2'>
+          <div className='grid gap-4 sm:grid-cols-3'>
             <div>
               <label htmlFor='k-type' className={label}>Loại hình</label>
               <select id='k-type' className={inputCls} value={form.businessType} onChange={set('businessType')}>
@@ -150,6 +155,10 @@ export default function OrganizerKycPage() {
             <div>
               <label htmlFor='k-tax' className={label}>Mã số thuế</label>
               <input id='k-tax' required className={inputCls} value={form.taxCode} onChange={set('taxCode')} placeholder='10 hoặc 13 chữ số' />
+            </div>
+            <div>
+              <label htmlFor='k-phone' className={label}>Số điện thoại</label>
+              <input id='k-phone' type='tel' required className={inputCls} value={form.phone} onChange={set('phone')} placeholder='0912345678' />
             </div>
           </div>
           <div className='grid gap-4 sm:grid-cols-3'>

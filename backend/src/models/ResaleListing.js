@@ -25,6 +25,8 @@ const schema = new Schema(
     // ACTIVE: đang bán | RESERVED: có người đang thanh toán (giữ 10 phút) | SOLD | CANCELLED
     status: { type: String, enum: ['ACTIVE', 'RESERVED', 'SOLD', 'CANCELLED'], default: 'ACTIVE', required: true },
     reserved_until: { type: Date },
+    // Hướng C: seller bấm huỷ trong lúc có buyer đang giữ chỗ thanh toán -> huỷ trì hoãn
+    cancel_requested: { type: Boolean, default: false },
 
     // Chi trả cho người bán (sau khi bán thành công)
     payout_bank: { type: payoutBankSchema },

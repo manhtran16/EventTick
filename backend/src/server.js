@@ -15,11 +15,16 @@ const PORT = process.env.PORT || 3000;
 
 connectDB();
 
-// Cho phép front-end (chạy ở localhost / 127.0.0.1 trên mọi cổng) gọi API kèm cookie
+// Cho phép front-end (localhost và Vercel) gọi API kèm cookie
 app.use(
   cors({
     origin: function (origin, callback) {
-      if (!origin || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+      if (
+        !origin ||
+        /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) ||
+        /\.vercel\.app$/.test(origin) ||
+        (process.env.CLIENT_URL && origin === process.env.CLIENT_URL)
+      ) {
         callback(null, true);
       } else {
         callback(new Error("Blocked by CORS: " + origin));

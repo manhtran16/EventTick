@@ -18,6 +18,7 @@ export default function AdminKycPage() {
   const [tab, setTab] = useState('PENDING');
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [approving, setApproving] = useState(null);
   const [rejecting, setRejecting] = useState(null);
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState('');
@@ -51,12 +52,12 @@ export default function AdminKycPage() {
     }
   };
 
-  const approve = async (p) => {
-    if (!window.confirm(`Duyệt hồ sơ của "${p.organizationName}"? Tài khoản sẽ trở thành nhà tổ chức.`)) return;
-    setBusy(`ok:${p._id}`);
+  const approve = async () => {
+    setBusy(`ok:${approving._id}`);
     try {
-      await api.put(`/admin/kyc/${p._id}/approve`, {});
+      await api.put(`/admin/kyc/${approving._id}/approve`, {});
       showToast('Đã duyệt hồ sơ');
+      setApproving(null);
       load();
     } catch (err) {
       showToast(err.message || 'Không duyệt được');
@@ -123,7 +124,7 @@ export default function AdminKycPage() {
                   </button>
                   {p.kycStatus === 'PENDING' && (
                     <>
-                      <button type='button' className='tb-btn tb-btn-solid tb-btn-sm' disabled={busy === `ok:${p._id}`} onClick={() => approve(p)}>
+                      <button type='button' className='tb-btn tb-btn-solid tb-btn-sm' disabled={busy === `ok:${p._id}`} onClick={() => setApproving(p)}>
                         <Check size={13} /> Duyệt
                       </button>
                       <button type='button' className='tb-btn tb-btn-outline tb-btn-sm text-red-700' onClick={() => { setRejecting(p); setReason(''); }}>
@@ -151,6 +152,23 @@ export default function AdminKycPage() {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {approving && (
+        <div className='fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50' onClick={() => setApproving(null)}>
+          <div className='bg-white rounded-2xl w-full max-w-md p-6 space-y-4' onClick={(e) => e.stopPropagation()}>
+            <h3 className='font-bold'>Duyệt hồ sơ &quot;{approving.organizationName}&quot;</h3>
+            <p className='text-sm text-[#52525b]'>Tài khoản sẽ trở thành nhà tổ chức và được phép tạo sự kiện, nhận doanh thu.</p>
+            <div className='flex gap-3'>
+              <button type='button' className='tb-btn tb-btn-solid' disabled={busy === `ok:${approving._id}`} onClick={approve}>
+                Xác nhận duyệt
+              </button>
+              <button type='button' className='tb-btn tb-btn-outline' disabled={busy === `ok:${approving._id}`} onClick={() => setApproving(null)}>
+                Huỷ
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

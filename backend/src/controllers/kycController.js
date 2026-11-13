@@ -16,6 +16,7 @@ function profileToClient(p, { withOwner = false } = {}) {
     organizationName: o.organization_name,
     businessType: o.business_type,
     taxCode: o.tax_code,
+    phone: o.user_id?.phone,
     bankName: o.bank_name,
     bankAccountNo: o.bank_account_no,
     bankAccountHolder: o.bank_account_holder,
@@ -46,6 +47,7 @@ exports.submit = ah(async (req, res) => {
     organization_name: str(b.organizationName, 255, "tên đơn vị tổ chức"),
     business_type: String(b.businessType || "").toUpperCase(),
     tax_code: str(b.taxCode, 50, "mã số thuế"),
+    phone: str(b.phone, 20, "số điện thoại"),
     bank_name: str(b.bankName, 100, "tên ngân hàng"),
     bank_account_no: str(b.bankAccountNo, 50, "số tài khoản"),
     bank_account_holder: str(b.bankAccountHolder, 150, "tên chủ tài khoản"),
@@ -55,6 +57,7 @@ exports.submit = ah(async (req, res) => {
   }
   // MST Việt Nam: 10 số (doanh nghiệp / cá nhân) hoặc 13 số dạng 10 số-3 số (chi nhánh)
   if (!/^\d{10}(-?\d{3})?$/.test(data.tax_code)) throw httpError("Mã số thuế phải gồm 10 hoặc 13 chữ số", 400);
+  if (!/^[0-9+\s]{8,15}$/.test(data.phone)) throw httpError("Số điện thoại không hợp lệ", 400);
   if (!/^\d{6,20}$/.test(data.bank_account_no)) throw httpError("Số tài khoản chỉ gồm 6–20 chữ số", 400);
 
   const file = req.file;
@@ -73,7 +76,6 @@ exports.submit = ah(async (req, res) => {
       resourceType: resourceTypeOf(kind),
     });
   }
-
   const payload = { ...data, id_card_or_license_url: docRef, kyc_status: "PENDING", submitted_at: new Date() };
   let profile;
   if (existing) {
@@ -86,6 +88,7 @@ exports.submit = ah(async (req, res) => {
   } else {
     profile = await OrganizerProfile.create({ user_id: user._id, ...payload });
   }
+  await User.updateOne({ _id: user._id }, { $set: { phone: data.phone } });
 
   await audit(req, "KYC_SUBMIT", "organizer_profiles", profile._id);
   notifyAdmins({ type: "KYC_SUBMITTED", title: "Hồ sơ KYC mới chờ duyệt", body: `${profile.organization_name} vừa gửi hồ sơ xác minh nhà tổ chức.`, link: "/admin/kyc" });
@@ -98,7 +101,7 @@ exports.submit = ah(async (req, res) => {
 
 // GET /v1/organizer/kyc — xem trạng thái hồ sơ của chính mình
 exports.mine = ah(async (req, res) => {
-  const profile = await OrganizerProfile.findOne({ user_id: req.user.id });
+  const profile = await OrganizerProfile.findOne({ user_id: req.user.id }).populate("user_id", "phone");
   res.json({ success: true, profile: profile ? profileToClient(profile) : null });
 });
 

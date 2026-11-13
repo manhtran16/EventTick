@@ -32,7 +32,7 @@ function contractToClient(c, { full = false } = {}) {
     createdAt,
     updatedAt: o.updatedAt || o.updated_at || createdAt,
   };
-  if (full) out.termsHtml = o.contract_terms_html;
+  if (full) out.termsHtml = contractSvc.stripAdminSignature(o.contract_terms_html);
   return out;
 }
 

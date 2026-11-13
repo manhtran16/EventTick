@@ -233,14 +233,21 @@ export default function OrganizerContractsPage() {
             <div className='border border-[#e4e4e7] rounded-xl p-4 max-h-72 overflow-y-auto text-sm leading-relaxed bg-[#f9f9fb]'>
               <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(active.termsHtml || '') }} />
             </div>
-            <div>
-              <div className='flex items-center justify-between mb-2'>
-                <span className='text-xs font-semibold uppercase tracking-wider text-[#52525b]'>Chữ ký của bạn</span>
-                <button type='button' onClick={() => padRef.current?.clear()} className='text-xs underline text-[#71717a] hover:text-[#09090b] flex items-center gap-1'>
-                  <Eraser size={12} /> Xóa, ký lại
-                </button>
+            <div className='grid gap-6 sm:grid-cols-2'>
+              <div className='border border-[#e4e4e7] rounded-xl p-4 min-h-44'>
+                <h3 className='text-xs font-semibold uppercase tracking-wider text-[#52525b]'>Đại diện bên A (Sàn EventTick)</h3>
+                <p className='mt-8 text-2xl italic'>Dương</p>
+                <p className='text-sm mt-2'>Bùi Tuấn Dương</p>
               </div>
-              <SignaturePad padRef={padRef} onChange={onSigChange} />
+              <div>
+                <div className='flex items-center justify-between mb-2'>
+                  <span className='text-xs font-semibold uppercase tracking-wider text-[#52525b]'>Đại diện bên B (Nhà tổ chức)</span>
+                  <button type='button' onClick={() => padRef.current?.clear()} className='text-xs underline text-[#71717a] hover:text-[#09090b] flex items-center gap-1'>
+                    <Eraser size={12} /> Xóa, ký lại
+                  </button>
+                </div>
+                <SignaturePad padRef={padRef} onChange={onSigChange} />
+              </div>
             </div>
             <label className='flex items-start gap-2.5 text-sm text-[#52525b] cursor-pointer'>
               <input type='checkbox' className='w-4 h-4 mt-0.5 accent-[#09090b]' checked={agree} onChange={(e) => setAgree(e.target.checked)} />

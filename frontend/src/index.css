@@ -1263,20 +1263,43 @@
 
 .footer-grid {
   display: grid;
-  grid-template-columns: repeat(1, 1fr);
+  grid-template-columns: 1fr;
   gap: 36px;
   margin-bottom: 44px;
+  text-align: center;
+  justify-items: center;
 }
 
 @media (min-width: 600px) {
   .footer-grid {
     grid-template-columns: repeat(2, 1fr);
+    max-width: 680px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .footer-grid > :first-child {
+    grid-column: 1 / -1;
+    max-width: 500px;
   }
 }
 
 @media (min-width: 992px) {
   .footer-grid {
-    grid-template-columns: 2fr 1fr 1fr 1.5fr;
+    grid-template-columns: 1.8fr 1fr 1fr;
+    gap: 48px;
+    max-width: 980px;
+    text-align: left;
+    justify-items: start;
+  }
+
+  .footer-grid > :first-child {
+    grid-column: auto;
+    max-width: none;
+  }
+
+  .footer-grid > :not(:first-child) {
+    justify-self: center;
   }
 }
 
@@ -1288,7 +1311,14 @@
   margin-bottom: 12px;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
+}
+
+@media (min-width: 992px) {
+  .footer-brand-title {
+    justify-content: flex-start;
+  }
 }
 
 .footer-desc {
@@ -1331,7 +1361,14 @@
   color: #71717a;
   transition: color var(--transition-fast);
   font-size: 13.5px;
-  text-align: left;
+  text-align: center;
+}
+
+@media (min-width: 992px) {
+  .footer-links a,
+  .footer-links button {
+    text-align: left;
+  }
 }
 
 .footer-links a:hover,
@@ -1371,17 +1408,23 @@
   flex-direction: column;
   gap: 12px;
   align-items: center;
+  justify-content: center;
   text-align: center;
   font-size: 12.5px;
   color: #71717a;
 }
 
-@media (min-width: 768px) {
-  .footer-bottom {
-    flex-direction: row;
-    justify-content: space-between;
-    text-align: left;
-  }
+/* QR SCANNER RESPONSIVE */
+#qr-reader {
+  width: 100% !important;
+  border: none !important;
+}
+
+#qr-reader video {
+  width: 100% !important;
+  height: auto !important;
+  object-fit: cover !important;
+  border-radius: 12px;
 }
 
 /* MOBILE BOTTOM APP BAR */

@@ -2,11 +2,13 @@ const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/v1'
 
 export async function request(endpoint, options = {}) {
   const isFormData = options.body instanceof FormData;
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
   const config = {
     ...options,
     credentials: 'include',
     headers: {
       ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     },
   };

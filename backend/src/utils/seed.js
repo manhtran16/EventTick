@@ -22,6 +22,8 @@ const connectDB = require("../config/db");
 const initDatabase = require("../db/initDatabase");
 const M = require("../models");
 const { signTicket } = require("../services/bookingService");
+const { seatsOfSection } = require("./seatGrid");
+const { SAMPLE_SVG } = require("./seatmapTemplate");
 
 const usersData = JSON.parse(fs.readFileSync(path.join(__dirname, "../data/users.json"), "utf-8"));
 const eventsData = JSON.parse(fs.readFileSync(path.join(__dirname, "../data/events.json"), "utf-8"));
@@ -205,68 +207,328 @@ async function run() {
     console.log(`  event "${event.title}" (${sessions.length} suất, ${tiers.length} hạng vé)`);
   }
 
-  // --- Sự kiện có SƠ ĐỒ GHẾ để test chọn ghế / khóa ghế Redis (UC11, UC12) ---
-  {
-    const start = new Date(Date.now() + 20 * 24 * 3600 * 1000);
+  // --- Các sự kiện có SƠ ĐỒ GHẾ (Seatmap Layout) đa dạng mô hình ---
+  const seedSeatmapEvent = async ({
+    category,
+    title,
+    description,
+    banner_url,
+    venue_name,
+    city,
+    startDays = 15,
+    svg_content,
+    stage_ids = ["STAGE_MAIN"],
+    tiersDef,
+    sectionsDef,
+  }) => {
+    const start = new Date(Date.now() + startDays * 24 * 3600 * 1000);
     start.setHours(19, 30, 0, 0);
-    const seatEvent = await M.Event.create({
+    const end = new Date(start.getTime() + 3.5 * 3600 * 1000);
+
+    const capacityByTier = {};
+    for (const s of sectionsDef) {
+      capacityByTier[s.tier_name] = (capacityByTier[s.tier_name] || 0) + s.capacity;
+    }
+
+    const event = await M.Event.create({
       organizer_id: organizer._id,
-      category_id: categoryByName['Sân khấu & Nghệ thuật']._id,
-      title: 'Vở Kịch Có Ghế Ngồi - Đêm Diễn Đặc Biệt',
-      description: '<p>Sự kiện có sơ đồ ghế để test chọn ghế.</p>',
-      banner_url: 'https://images.unsplash.com/photo-1503095396549-807759245b35?q=80&w=1200&auto=format&fit=crop',
-      thumbnail_url: 'https://images.unsplash.com/photo-1503095396549-807759245b35?q=80&w=1200&auto=format&fit=crop',
-      venue_name: 'Nhà Hát Lớn, Hà Nội',
-      city: 'Hà Nội',
+      category_id: category._id,
+      title,
+      description,
+      banner_url,
+      thumbnail_url: banner_url,
+      venue_name,
+      city,
       start_time: start,
-      end_time: new Date(start.getTime() + 3 * 3600 * 1000),
+      end_time: end,
       has_seat_map: true,
       allow_resale: true,
       max_resale_markup_pct: 10,
-      status: 'PUBLISHED',
+      status: "PUBLISHED",
       custom_form_schema: DEMO_FORM,
-      organizer_name: 'Demo Concert Co., Ltd.',
-      lowest_price: 200000,
+      organizer_name: "Demo Concert Co., Ltd.",
+      lowest_price: Math.min(...tiersDef.map((t) => t.price)),
     });
-    const seatSession = await M.EventSession.create({
-      event_id: seatEvent._id, name: 'Đêm diễn chính', start_time: start,
-      end_time: new Date(start.getTime() + 3 * 3600 * 1000), status: 'SCHEDULED',
+
+    const session = await M.EventSession.create({
+      event_id: event._id,
+      name: "Đêm diễn chính",
+      start_time: start,
+      end_time: end,
+      status: "SCHEDULED",
     });
-    const mkTier = (name, price, color, qty) => ({
-      event_id: seatEvent._id, session_id: seatSession._id, name, price,
-      total_quantity: qty, available_quantity: qty, min_per_order: 1, max_per_order: 6, zone_type: 'SEATED',
-      sale_start_time: new Date(Date.now() - 24 * 3600 * 1000), sale_end_time: start, zone_color: color,
+
+    const tierDocs = tiersDef.map((t) => {
+      const qty = capacityByTier[t.name] ?? t.total_quantity ?? 50;
+      return {
+        event_id: event._id,
+        session_id: session._id,
+        name: t.name,
+        price: t.price,
+        total_quantity: qty,
+        available_quantity: qty,
+        min_per_order: 1,
+        max_per_order: 6,
+        zone_type: t.zone_type || "SEATED",
+        sale_start_time: new Date(Date.now() - 24 * 3600 * 1000),
+        sale_end_time: start,
+        zone_color: t.zone_color,
+      };
     });
-    const [vip, std] = await M.TicketTier.insertMany([mkTier('Ghế VIP', 500000, '#f59e0b', 20), mkTier('Ghế Thường', 200000, '#3b82f6', 30)]);
+    const createdTiers = await M.TicketTier.insertMany(tierDocs);
+    const tierMap = new Map(createdTiers.map((t) => [t.name, t]));
+
     const seatDocs = [];
-    const rows = [['A', vip, 'SEC_VIP'], ['B', vip, 'SEC_VIP'], ['C', std, 'SEC_STD'], ['D', std, 'SEC_STD'], ['E', std, 'SEC_STD']];
-    rows.forEach(([row, tier, section], r) => {
-      const perRow = 10;
-      const rowIdx = section === 'SEC_VIP' ? r : r - 2; // hàng thứ mấy trong khu
-      for (let n = 1; n <= perRow; n++) {
-        seatDocs.push({ event_id: seatEvent._id, session_id: seatSession._id, tier_id: tier._id,
-          section_name: section, row_label: row, seat_number: String(n).padStart(2, '0'),
-          coord_x: (n - 1) * 30, coord_y: rowIdx * 34, status: 'AVAILABLE' });
+    for (const sec of sectionsDef) {
+      if (sec.type !== "SEATED") continue;
+      const tier = tierMap.get(sec.tier_name);
+      for (const p of seatsOfSection(sec)) {
+        seatDocs.push({
+          event_id: event._id,
+          session_id: session._id,
+          tier_id: tier._id,
+          section_name: sec.section_id,
+          row_label: p.row,
+          seat_number: String(p.number).padStart(2, "0"),
+          coord_x: p.x,
+          coord_y: p.y,
+          status: "AVAILABLE",
+        });
       }
-    });
-    await M.Seat.insertMany(seatDocs);
-    // Sơ đồ SVG + cấu hình khu (giống kết quả Admin import seating_manifest.xlsx)
-    const mkRows = (labels) => labels.map((label) => ({ label, from: 1, to: 10, aisles: [], blocked: [] }));
+    }
+
+    if (seatDocs.length) {
+      await M.Seat.insertMany(seatDocs);
+    }
+
     await M.SeatmapLayout.create({
-      event_id: seatEvent._id,
-      svg_content: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 360"><rect id="STAGE_MAIN" x="150" y="10" width="300" height="50" rx="8"/><text x="300" y="42" text-anchor="middle" fill="#fff" font-size="20" font-family="sans-serif">SÂN KHẤU</text><rect id="SEC_VIP" x="100" y="90" width="400" height="90" rx="10"/><rect id="SEC_STD" x="60" y="210" width="480" height="130" rx="10"/></svg>',
-      stage_ids: ['STAGE_MAIN'],
-      sections: [
-        { section_id: 'SEC_VIP', name: 'Khu VIP', type: 'SEATED', tier_name: 'Ghế VIP', capacity: 20, rows: mkRows(['A', 'B']) },
-        { section_id: 'SEC_STD', name: 'Khu Thường', type: 'SEATED', tier_name: 'Ghế Thường', capacity: 30, rows: mkRows(['C', 'D', 'E']) },
-      ],
+      event_id: event._id,
+      svg_content,
+      stage_ids,
+      sections: sectionsDef,
       updated_by: admin._id,
     });
-    await M.EContract.create({ event_id: seatEvent._id, organizer_id: organizer._id, approved_by_admin: admin._id,
-      commission_rate_pct: 5, contract_terms_html: '<p>Hợp đồng mẫu</p>', signed_at: new Date(), signer_ip: '127.0.0.1', status: 'SIGNED' });
-    await M.StaffAssignment.create({ staff_user_id: staff._id, organizer_id: organizer._id, event_id: seatEvent._id, assigned_gate: 'Gate A', is_active: true });
-    console.log('  event có sơ đồ ghế: "' + seatEvent.title + '" (' + seatDocs.length + ' ghế, 5 hàng A-E x 10)');
-  }
+
+    await M.EContract.create({
+      event_id: event._id,
+      organizer_id: organizer._id,
+      approved_by_admin: admin._id,
+      commission_rate_pct: 5,
+      contract_terms_html: "<p>Hợp đồng dịch vụ bán vé điện tử</p>",
+      signed_at: new Date(),
+      signer_ip: "127.0.0.1",
+      status: "SIGNED",
+    });
+
+    await M.StaffAssignment.create({
+      staff_user_id: staff._id,
+      organizer_id: organizer._id,
+      event_id: event._id,
+      assigned_gate: "Gate A",
+      is_active: true,
+    });
+
+    console.log(`  event có sơ đồ ghế: "${event.title}" (${seatDocs.length} ghế ngồi, ${sectionsDef.length} khu)`);
+    return { event, session, tiers: createdTiers };
+  };
+
+  // 1. Sơ đồ Nhà Hát Lớn (Test chuẩn chọn ghế/khóa ghế Redis UC11, UC12)
+  const mkSimpleRows = (labels) => labels.map((label) => ({ label, from: 1, to: 10, aisles: [], blocked: [] }));
+  await seedSeatmapEvent({
+    category: categoryByName["Sân khấu & Nghệ thuật"],
+    title: "Vở Kịch Có Ghế Ngồi - Đêm Diễn Đặc Biệt",
+    description: "<p>Sự kiện kịch nghệ với sơ đồ ghế tiêu chuẩn hai khu VIP và Thường.</p>",
+    banner_url: "https://images.unsplash.com/photo-1503095396549-807759245b35?q=80&w=1200&auto=format&fit=crop",
+    venue_name: "Nhà Hát Lớn, Hà Nội",
+    city: "Hà Nội",
+    startDays: 20,
+    svg_content: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 360"><rect id="STAGE_MAIN" x="150" y="10" width="300" height="50" rx="8"/><text x="300" y="42" text-anchor="middle" fill="#fff" font-size="20" font-family="sans-serif">SÂN KHẤU</text><rect id="SEC_VIP" x="100" y="90" width="400" height="90" rx="10"/><rect id="SEC_STD" x="60" y="210" width="480" height="130" rx="10"/></svg>',
+    stage_ids: ["STAGE_MAIN"],
+    tiersDef: [
+      { name: "Ghế VIP", price: 500000, zone_color: "#f59e0b", zone_type: "SEATED" },
+      { name: "Ghế Thường", price: 200000, zone_color: "#3b82f6", zone_type: "SEATED" },
+    ],
+    sectionsDef: [
+      { section_id: "SEC_VIP", name: "Khu VIP", type: "SEATED", tier_name: "Ghế VIP", layout: "STRAIGHT", capacity: 20, rows: mkSimpleRows(["A", "B"]) },
+      { section_id: "SEC_STD", name: "Khu Thường", type: "SEATED", tier_name: "Ghế Thường", layout: "STRAIGHT", capacity: 30, rows: mkSimpleRows(["C", "D", "E"]) },
+    ],
+  });
+
+  // 2. Đại Nhạc Hội Sân Vận Động (Layout ARC quạt cong quanh sân khấu + Khu đứng GA)
+  await seedSeatmapEvent({
+    category: categoryByName["Nhạc sống & Concert"],
+    title: "Symphony of Stars - Super Arena Concert 2026",
+    description: "<p>Đại nhạc hội quy mô lớn với sân khấu bán nguyệt, các khu ghế cánh cung bao quanh và khu đứng GA cuồng nhiệt.</p>",
+    banner_url: "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?q=80&w=1200&auto=format&fit=crop",
+    venue_name: "Sân Vận Động Quốc Gia Mỹ Đình, Hà Nội",
+    city: "Hà Nội",
+    startDays: 25,
+    svg_content: SAMPLE_SVG,
+    stage_ids: ["STAGE_MAIN"],
+    tiersDef: [
+      { name: "VIP", price: 1800000, zone_color: "#f59e0b", zone_type: "SEATED" },
+      { name: "CAT 1", price: 900000, zone_color: "#3b82f6", zone_type: "SEATED" },
+      { name: "GA", price: 450000, zone_color: "#22c55e", zone_type: "GA" },
+    ],
+    sectionsDef: [
+      {
+        section_id: "SEC_VIP_L", name: "VIP Trái", type: "SEATED", tier_name: "VIP", layout: "ARC", capacity: 38,
+        rows: [
+          { label: "A", from: 1, to: 10, aisles: [], blocked: [1, 10] },
+          { label: "B", from: 1, to: 10, aisles: [], blocked: [] },
+          { label: "C", from: 1, to: 10, aisles: [], blocked: [] },
+          { label: "D", from: 1, to: 10, aisles: [], blocked: [] },
+        ],
+      },
+      {
+        section_id: "SEC_VIP_R", name: "VIP Phải", type: "SEATED", tier_name: "VIP", layout: "ARC", capacity: 38,
+        rows: [
+          { label: "A", from: 1, to: 10, aisles: [], blocked: [1, 10] },
+          { label: "B", from: 1, to: 10, aisles: [], blocked: [] },
+          { label: "C", from: 1, to: 10, aisles: [], blocked: [] },
+          { label: "D", from: 1, to: 10, aisles: [], blocked: [] },
+        ],
+      },
+      {
+        section_id: "SEC_CAT1_L", name: "CAT 1 Trái", type: "SEATED", tier_name: "CAT 1", layout: "ARC", capacity: 70,
+        rows: [
+          { label: "A", from: 1, to: 14, aisles: [7], blocked: [] },
+          { label: "B", from: 1, to: 14, aisles: [7], blocked: [] },
+          { label: "C", from: 1, to: 14, aisles: [7], blocked: [] },
+          { label: "D", from: 1, to: 14, aisles: [7], blocked: [] },
+          { label: "E", from: 1, to: 14, aisles: [7], blocked: [] },
+        ],
+      },
+      {
+        section_id: "SEC_CAT1_R", name: "CAT 1 Phải", type: "SEATED", tier_name: "CAT 1", layout: "ARC", capacity: 70,
+        rows: [
+          { label: "A", from: 1, to: 14, aisles: [7], blocked: [] },
+          { label: "B", from: 1, to: 14, aisles: [7], blocked: [] },
+          { label: "C", from: 1, to: 14, aisles: [7], blocked: [] },
+          { label: "D", from: 1, to: 14, aisles: [7], blocked: [] },
+          { label: "E", from: 1, to: 14, aisles: [7], blocked: [] },
+        ],
+      },
+      {
+        section_id: "SEC_GA", name: "Khu Đứng GA", type: "GA", tier_name: "GA", layout: "STRAIGHT", capacity: 500, rows: [],
+      },
+    ],
+  });
+
+  // 3. Khán Phòng Hội Thảo & Nhà Hát 3 Cánh (Auditorium: Cánh Trái, VIP Trung Tâm, Cánh Phải, Tầng Lửng)
+  const AUDITORIUM_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 520">' +
+    '<rect id="STAGE_MAIN" x="250" y="20" width="400" height="55" rx="8" fill="#9ca3af"/>' +
+    '<text x="450" y="55" text-anchor="middle" fill="#fff" font-size="20" font-family="sans-serif">SÂN KHẤU CHÍNH</text>' +
+    '<rect id="SEC_CENTER" x="270" y="105" width="360" height="180" rx="10"/>' +
+    '<rect id="SEC_WING_L" x="40" y="115" width="200" height="160" rx="10"/>' +
+    '<rect id="SEC_WING_R" x="660" y="115" width="200" height="160" rx="10"/>' +
+    '<rect id="SEC_BALCONY" x="120" y="315" width="660" height="170" rx="10"/>' +
+    '</svg>';
+
+  await seedSeatmapEvent({
+    category: categoryByName["Hội thảo & Workshop"],
+    title: "Tech Summit Vietnam 2026 - Đỉnh Cao Trí Tuệ Nhân Tạo",
+    description: "<p>Hội thảo công nghệ quy mô quốc tế với khán phòng hiện đại chia 3 phân khu cánh và tầng lửng sang trọng.</p>",
+    banner_url: "https://images.unsplash.com/photo-1540575467063-178a50c2df87?q=80&w=1200&auto=format&fit=crop",
+    venue_name: "Trung Tâm Hội Nghị Quốc Gia, Hà Nội",
+    city: "Hà Nội",
+    startDays: 18,
+    svg_content: AUDITORIUM_SVG,
+    stage_ids: ["STAGE_MAIN"],
+    tiersDef: [
+      { name: "VIP Trung Tâm", price: 1500000, zone_color: "#ef4444", zone_type: "SEATED" },
+      { name: "Ghế Tiêu Chuẩn", price: 750000, zone_color: "#3b82f6", zone_type: "SEATED" },
+      { name: "Ghế Tầng Lửng", price: 400000, zone_color: "#10b981", zone_type: "SEATED" },
+    ],
+    sectionsDef: [
+      {
+        section_id: "SEC_CENTER", name: "VIP Trung Tâm", type: "SEATED", tier_name: "VIP Trung Tâm", layout: "STRAIGHT", capacity: 40,
+        rows: [
+          { label: "A", from: 1, to: 8, aisles: [4], blocked: [] },
+          { label: "B", from: 1, to: 8, aisles: [4], blocked: [] },
+          { label: "C", from: 1, to: 8, aisles: [4], blocked: [] },
+          { label: "D", from: 1, to: 8, aisles: [4], blocked: [] },
+          { label: "E", from: 1, to: 8, aisles: [4], blocked: [] },
+        ],
+      },
+      {
+        section_id: "SEC_WING_L", name: "Cánh Trái", type: "SEATED", tier_name: "Ghế Tiêu Chuẩn", layout: "STRAIGHT", capacity: 24,
+        rows: [
+          { label: "A", from: 1, to: 6, aisles: [], blocked: [] },
+          { label: "B", from: 1, to: 6, aisles: [], blocked: [] },
+          { label: "C", from: 1, to: 6, aisles: [], blocked: [] },
+          { label: "D", from: 1, to: 6, aisles: [], blocked: [] },
+        ],
+      },
+      {
+        section_id: "SEC_WING_R", name: "Cánh Phải", type: "SEATED", tier_name: "Ghế Tiêu Chuẩn", layout: "STRAIGHT", capacity: 24,
+        rows: [
+          { label: "A", from: 1, to: 6, aisles: [], blocked: [] },
+          { label: "B", from: 1, to: 6, aisles: [], blocked: [] },
+          { label: "C", from: 1, to: 6, aisles: [], blocked: [] },
+          { label: "D", from: 1, to: 6, aisles: [], blocked: [] },
+        ],
+      },
+      {
+        section_id: "SEC_BALCONY", name: "Tầng Lửng (Balcony)", type: "SEATED", tier_name: "Ghế Tầng Lửng", layout: "STRAIGHT", capacity: 36,
+        rows: [
+          { label: "A", from: 1, to: 12, aisles: [6], blocked: [] },
+          { label: "B", from: 1, to: 12, aisles: [6], blocked: [] },
+          { label: "C", from: 1, to: 12, aisles: [6], blocked: [] },
+        ],
+      },
+    ],
+  });
+
+  // 4. Phòng Trà Ca Nhạc Ấm Cúng (Sofa VIP Cận Cảnh + Bàn Tiêu Chuẩn + Quầy Bar)
+  const LOUNGE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 420">' +
+    '<rect id="STAGE_MAIN" x="220" y="15" width="260" height="50" rx="8" fill="#9ca3af"/>' +
+    '<text x="350" y="47" text-anchor="middle" fill="#fff" font-size="18" font-family="sans-serif">SÂN KHẤU LIVE</text>' +
+    '<rect id="SEC_SOFA" x="120" y="85" width="460" height="90" rx="10"/>' +
+    '<rect id="SEC_TABLE" x="80" y="195" width="540" height="110" rx="10"/>' +
+    '<rect id="SEC_BAR" x="160" y="325" width="380" height="75" rx="8"/>' +
+    '</svg>';
+
+  await seedSeatmapEvent({
+    category: categoryByName["Nhạc sống & Concert"],
+    title: "Đêm Nhạc Acoustic & Jazz - Mây Trịnh Ca Sài Gòn",
+    description: "<p>Không gian âm nhạc phòng trà mộc mạc, gần gũi với bàn Sofa VIP cận cảnh sân khấu và quầy bar cocktail.</p>",
+    banner_url: "https://images.unsplash.com/photo-1511192336575-5a79af67a629?q=80&w=1200&auto=format&fit=crop",
+    venue_name: "Phòng Trà Không Tên, TP. Hồ Chí Minh",
+    city: "TP. Hồ Chí Minh",
+    startDays: 12,
+    svg_content: LOUNGE_SVG,
+    stage_ids: ["STAGE_MAIN"],
+    tiersDef: [
+      { name: "Sofa VIP", price: 800000, zone_color: "#ec4899", zone_type: "SEATED" },
+      { name: "Bàn Tiêu Chuẩn", price: 450000, zone_color: "#8b5cf6", zone_type: "SEATED" },
+      { name: "Ghế Bar High-Chair", price: 250000, zone_color: "#06b6d4", zone_type: "SEATED" },
+    ],
+    sectionsDef: [
+      {
+        section_id: "SEC_SOFA", name: "Khu Sofa Cận Cảnh", type: "SEATED", tier_name: "Sofa VIP", layout: "STRAIGHT", capacity: 16,
+        rows: [
+          { label: "A", from: 1, to: 8, aisles: [], blocked: [] },
+          { label: "B", from: 1, to: 8, aisles: [], blocked: [] },
+        ],
+      },
+      {
+        section_id: "SEC_TABLE", name: "Khu Bàn Tiêu Chuẩn", type: "SEATED", tier_name: "Bàn Tiêu Chuẩn", layout: "STRAIGHT", capacity: 30,
+        rows: [
+          { label: "C", from: 1, to: 10, aisles: [5], blocked: [] },
+          { label: "D", from: 1, to: 10, aisles: [5], blocked: [] },
+          { label: "E", from: 1, to: 10, aisles: [5], blocked: [] },
+        ],
+      },
+      {
+        section_id: "SEC_BAR", name: "Khu Quầy Bar Cocktail", type: "SEATED", tier_name: "Ghế Bar High-Chair", layout: "STRAIGHT", capacity: 16,
+        rows: [
+          { label: "F", from: 1, to: 8, aisles: [], blocked: [] },
+          { label: "G", from: 1, to: 8, aisles: [], blocked: [] },
+        ],
+      },
+    ],
+  });
 
   // --- Vouchers (theo từng sự kiện đầu tiên) ---
   const first = events[0];

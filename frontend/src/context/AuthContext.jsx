@@ -36,6 +36,9 @@ export function AuthProvider({ children }) {
     try {
       setUnverifiedEmail(null);
       const res = await authService.login({ username, password });
+      if (res?.token) {
+        localStorage.setItem('token', res.token);
+      }
       setUser(res.user);
       return res;
     } catch (err) {
@@ -54,6 +57,7 @@ export function AuthProvider({ children }) {
     try {
       await authService.logout();
     } finally {
+      localStorage.removeItem('token');
       setUser(null);
     }
   };

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, Download, Loader2, Plus, Trash2, Wallet, Users, ReceiptText, BarChart3, ScanLine, History } from 'lucide-react';
+import { ArrowLeft, Download, Loader2, Plus, Trash2, Wallet, Users, ReceiptText, BarChart3, ScanLine, History, CheckCircle2, X } from 'lucide-react';
 import { api } from '../../api/client';
 import { useToast } from '../../context/ToastContext';
 import { inputCls } from '../../components/FormField';
@@ -16,10 +16,34 @@ const TABS = [
   { k: 'payout', t: 'Đối soát', i: Wallet },
   { k: 'history', t: 'Lịch sử', i: History },
 ];
-const EVENT_STATUS = { DRAFT: 'Bản nháp', PENDING: 'Chờ Admin duyệt', APPROVED: 'Đã duyệt, chờ ký hợp đồng', PUBLISHED: 'Đang mở bán', CANCELLED: 'Đã huỷ', ENDED: 'Đã kết thúc' };
-const PAYOUT_STATUS = { REQUESTED: 'Chờ Admin duyệt', APPROVED: 'Đã duyệt, chờ chuyển khoản', SETTLED: 'Đã giải ngân', REJECTED: 'Bị từ chối' };
-const ORDER_STATUS = { PAID: 'Đã thanh toán', PENDING_PAYMENT: 'Chờ thanh toán', EXPIRED: 'Hết hạn', CANCELLED: 'Đã huỷ', REFUNDED: 'Đã hoàn tiền' };
-const TICKET_STATUS = { VALID: 'Hợp lệ', USED: 'Đã soát', LISTED_RESALE: 'Đang bán lại', RESOLD_INVALID: 'Đã sang nhượng', REFUNDED: 'Đã hoàn tiền' };
+const EVENT_STATUS = {
+  DRAFT: 'Bản nháp',
+  PENDING: 'Chờ Admin duyệt',
+  APPROVED: 'Đã duyệt, chờ ký hợp đồng',
+  PUBLISHED: 'Đang mở bán',
+  CANCELLED: 'Đã huỷ',
+  ENDED: 'Đã kết thúc',
+};
+const PAYOUT_STATUS = {
+  REQUESTED: 'Chờ Admin duyệt',
+  APPROVED: 'Đã duyệt, chờ chuyển khoản',
+  SETTLED: 'Đã giải ngân',
+  REJECTED: 'Bị từ chối',
+};
+const ORDER_STATUS = {
+  PAID: 'Đã thanh toán',
+  PENDING_PAYMENT: 'Chờ thanh toán',
+  EXPIRED: 'Hết hạn',
+  CANCELLED: 'Đã huỷ',
+  REFUNDED: 'Đã hoàn tiền',
+};
+const TICKET_STATUS = {
+  VALID: 'Hợp lệ',
+  USED: 'Đã soát',
+  LISTED_RESALE: 'Đang bán lại',
+  RESOLD_INVALID: 'Đã sang nhượng',
+  REFUNDED: 'Đã hoàn tiền',
+};
 
 function Stat({ label, value, sub }) {
   return (
@@ -55,6 +79,8 @@ export default function OrganizerEventDashboardPage() {
   const [search, setSearch] = useState('');
   const [staffForm, setStaffForm] = useState({ email: '', assignedGate: 'Cổng chính' });
   const [busy, setBusy] = useState(false);
+  const [payoutConfirm, setPayoutConfirm] = useState(false);
+  const [payoutSuccess, setPayoutSuccess] = useState(null);
 
   const load = useCallback(
     async (which) => {
@@ -90,10 +116,14 @@ export default function OrganizerEventDashboardPage() {
 
   const addStaff = async (e) => {
     e.preventDefault();
-    if (!staffForm.email.trim()) return showToast('Nhập email của nhân viên (tài khoản đã đăng nhập hệ thống ít nhất một lần)');
+    if (!staffForm.email.trim())
+      return showToast('Nhập email của nhân viên (tài khoản đã đăng nhập hệ thống ít nhất một lần)');
     setBusy(true);
     try {
-      const r = await api.post(`/organizer/events/${id}/staff`, { email: staffForm.email.trim(), assignedGate: staffForm.assignedGate.trim() || 'Cổng chính' });
+      const r = await api.post(`/organizer/events/${id}/staff`, {
+        email: staffForm.email.trim(),
+        assignedGate: staffForm.assignedGate.trim() || 'Cổng chính',
+      });
       showToast(r.message || 'Đã thêm nhân viên');
       setStaffForm({ ...staffForm, email: '' });
       load('staff');
@@ -115,12 +145,17 @@ export default function OrganizerEventDashboardPage() {
     }
   };
 
-  const requestPayout = async () => {
-    if (!window.confirm('Gửi yêu cầu đối soát và rút tiền cho sự kiện này?')) return;
+  const requestPayout = () => setPayoutConfirm(true);
+
+  const submitPayout = async () => {
+    setPayoutConfirm(false);
     setBusy(true);
     try {
       const r = await api.post(`/organizer/events/${id}/payout/request`, {});
-      showToast(r.message || 'Đã gửi yêu cầu đối soát');
+      setPayoutSuccess({
+        message: r.message || 'Đã gửi yêu cầu đối soát và rút tiền thành công!',
+        amount: ps?.netPayoutAmount,
+      });
       load('payout');
     } catch (err) {
       showToast(err.message || 'Không gửi được yêu cầu');
@@ -138,7 +173,12 @@ export default function OrganizerEventDashboardPage() {
         load(tab);
       }}
       className='flex gap-2'>
-      <input className={`${inputCls} max-w-xs`} placeholder='Tìm theo mã, tên, email...' value={search} onChange={(e) => setSearch(e.target.value)} />
+      <input
+        className={`${inputCls} max-w-xs`}
+        placeholder='Tìm theo mã, tên, email...'
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+      />
       <button type='submit' className='tb-btn tb-btn-outline tb-btn-sm'>
         Tìm
       </button>
@@ -148,7 +188,9 @@ export default function OrganizerEventDashboardPage() {
   return (
     <div className='space-y-6'>
       <div>
-        <Link to='/organizer/events' className='text-xs font-semibold text-[#71717a] hover:text-[#09090b] inline-flex items-center gap-1.5'>
+        <Link
+          to='/organizer/events'
+          className='text-xs font-semibold text-[#71717a] hover:text-[#09090b] inline-flex items-center gap-1.5'>
           <ArrowLeft size={13} /> Về danh sách sự kiện
         </Link>
         <h1 className='text-2xl font-bold tracking-tight mt-2'>{an?.title || 'Quản lý sự kiện'}</h1>
@@ -161,7 +203,9 @@ export default function OrganizerEventDashboardPage() {
             type='button'
             onClick={() => setTab(k)}
             className={`px-4 py-1.5 rounded-full text-xs font-semibold border flex items-center gap-1.5 ${
-              tab === k ? 'bg-[#09090b] text-white border-[#09090b]' : 'bg-white border-[#e4e4e7] text-[#52525b] hover:border-[#09090b]'
+              tab === k
+                ? 'bg-[#09090b] text-white border-[#09090b]'
+                : 'bg-white border-[#e4e4e7] text-[#52525b] hover:border-[#09090b]'
             }`}>
             <Icon size={13} /> {t}
           </button>
@@ -178,7 +222,11 @@ export default function OrganizerEventDashboardPage() {
         <div className='space-y-6'>
           <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-4'>
             <Stat label='Doanh thu gộp' value={money(an.grossRevenue)} sub={`Giảm giá: ${money(an.totalDiscount)}`} />
-            <Stat label='Thực nhận' value={money(an.netEarnings)} sub={`Hoa hồng ${an.commissionRatePct}%: ${money(an.platformCommissionAmt)}`} />
+            <Stat
+              label='Thực nhận'
+              value={money(an.netEarnings)}
+              sub={`Hoa hồng ${an.commissionRatePct}%: ${money(an.platformCommissionAmt)}`}
+            />
             <Stat label='Vé đã bán' value={an.totalTicketsSold} />
             <Stat label='Đã soát vé' value={an.checkedInCount} sub={`${an.checkInRatePct}% tổng vé`} />
           </div>
@@ -235,7 +283,9 @@ export default function OrganizerEventDashboardPage() {
               <tbody>
                 {data.orders.orders.length === 0 && (
                   <tr>
-                    <td colSpan={6} className='p-8 text-center text-[#71717a]'>Chưa có đơn hàng.</td>
+                    <td colSpan={6} className='p-8 text-center text-[#71717a]'>
+                      Chưa có đơn hàng.
+                    </td>
                   </tr>
                 )}
                 {data.orders.orders.map((o) => (
@@ -277,7 +327,9 @@ export default function OrganizerEventDashboardPage() {
               <tbody>
                 {data.attendees.attendees.length === 0 && (
                   <tr>
-                    <td colSpan={6} className='p-8 text-center text-[#71717a]'>Chưa có người tham dự.</td>
+                    <td colSpan={6} className='p-8 text-center text-[#71717a]'>
+                      Chưa có người tham dự.
+                    </td>
                   </tr>
                 )}
                 {data.attendees.attendees.map((a) => (
@@ -300,27 +352,53 @@ export default function OrganizerEventDashboardPage() {
               </tbody>
             </table>
           </div>
-          <p className='text-xs text-[#71717a]'>Tổng {data.attendees.total} vé. Dùng nút xuất CSV ở tab Tổng quan để lấy toàn bộ.</p>
+          <p className='text-xs text-[#71717a]'>
+            Tổng {data.attendees.total} vé. Dùng nút xuất CSV ở tab Tổng quan để lấy toàn bộ.
+          </p>
         </div>
       )}
 
       {tab === 'staff' && data.staff && (
         <div className='space-y-4'>
-          <form onSubmit={addStaff} className='bg-white border border-[#e4e4e7] rounded-2xl p-5 grid gap-3 sm:grid-cols-[2fr_1fr_auto] items-end'>
+          <form
+            onSubmit={addStaff}
+            className='bg-white border border-[#e4e4e7] rounded-2xl p-5 grid gap-3 sm:grid-cols-[2fr_1fr_auto] items-end'>
             <div>
-              <label htmlFor='st-email' className='block text-xs font-semibold uppercase tracking-wider text-[#52525b] mb-1.5'>Email nhân viên</label>
-              <input id='st-email' type='email' className={inputCls} value={staffForm.email} onChange={(e) => setStaffForm({ ...staffForm, email: e.target.value })} placeholder='nhanvien@gmail.com' />
+              <label
+                htmlFor='st-email'
+                className='block text-xs font-semibold uppercase tracking-wider text-[#52525b] mb-1.5'>
+                Email nhân viên
+              </label>
+              <input
+                id='st-email'
+                type='email'
+                className={inputCls}
+                value={staffForm.email}
+                onChange={(e) => setStaffForm({ ...staffForm, email: e.target.value })}
+                placeholder='nhanvien@gmail.com'
+              />
             </div>
             <div>
-              <label htmlFor='st-gate' className='block text-xs font-semibold uppercase tracking-wider text-[#52525b] mb-1.5'>Cổng</label>
-              <input id='st-gate' className={inputCls} value={staffForm.assignedGate} onChange={(e) => setStaffForm({ ...staffForm, assignedGate: e.target.value })} />
+              <label
+                htmlFor='st-gate'
+                className='block text-xs font-semibold uppercase tracking-wider text-[#52525b] mb-1.5'>
+                Cổng
+              </label>
+              <input
+                id='st-gate'
+                className={inputCls}
+                value={staffForm.assignedGate}
+                onChange={(e) => setStaffForm({ ...staffForm, assignedGate: e.target.value })}
+              />
             </div>
             <button type='submit' disabled={busy} className='tb-btn tb-btn-solid'>
               <Plus size={14} /> Thêm
             </button>
           </form>
           <div className='bg-white border border-[#e4e4e7] rounded-2xl divide-y divide-[#f4f4f6]'>
-            {data.staff.staff.length === 0 && <div className='p-8 text-center text-sm text-[#71717a]'>Chưa phân công nhân viên nào.</div>}
+            {data.staff.staff.length === 0 && (
+              <div className='p-8 text-center text-sm text-[#71717a]'>Chưa phân công nhân viên nào.</div>
+            )}
             {data.staff.staff.map((a) => (
               <div key={a.assignmentId} className='p-4 flex items-center justify-between gap-3'>
                 <div>
@@ -330,14 +408,20 @@ export default function OrganizerEventDashboardPage() {
                   </div>
                 </div>
                 {a.isActive && (
-                  <button type='button' aria-label='Gỡ nhân viên' className='text-red-700' onClick={() => removeStaff(a)}>
+                  <button
+                    type='button'
+                    aria-label='Gỡ nhân viên'
+                    className='text-red-700'
+                    onClick={() => removeStaff(a)}>
                     <Trash2 size={16} />
                   </button>
                 )}
               </div>
             ))}
           </div>
-          <p className='text-xs text-[#71717a]'>Người được thêm sẽ trở thành nhân viên soát vé và dùng trang Soát vé QR.</p>
+          <p className='text-xs text-[#71717a]'>
+            Người được thêm sẽ trở thành nhân viên soát vé và dùng trang Soát vé QR.
+          </p>
         </div>
       )}
 
@@ -349,7 +433,7 @@ export default function OrganizerEventDashboardPage() {
           <ol className='border-l-2 border-[#e4e4e7] pl-5 space-y-4'>
             {data.history.history.map((h, i) => (
               <li key={i} className='relative'>
-                <span className='absolute -left-[27px] top-1.5 w-3 h-3 rounded-full bg-[#09090b]' />
+                <span className='absolute -left-6.75 top-1.5 w-3 h-3 rounded-full bg-[#09090b]' />
                 <div className='text-sm font-semibold'>{EVENT_STATUS[h.status] || h.status}</div>
                 <div className='text-xs text-[#71717a]'>{fmt(h.at)}</div>
                 {h.note && <div className='text-xs text-[#52525b] mt-0.5'>{h.note}</div>}
@@ -367,18 +451,65 @@ export default function OrganizerEventDashboardPage() {
             <Stat label='Thực nhận' value={money(ps.netPayoutAmount)} />
           </div>
           {ps.existingSettlement && (
-            <div className={`p-4 border rounded-xl text-sm ${ps.existingSettlement.status === 'REJECTED' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-[#f9f9fb] border-[#e4e4e7]'}`}>
-              Yêu cầu đối soát: <strong>{PAYOUT_STATUS[ps.existingSettlement.status] || ps.existingSettlement.status}</strong> · {money(ps.existingSettlement.netPayoutAmount)}
+            <div
+              className={`p-4 border rounded-xl text-sm ${ps.existingSettlement.status === 'REJECTED' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-[#f9f9fb] border-[#e4e4e7]'}`}>
+              Yêu cầu đối soát:{' '}
+              <strong>{PAYOUT_STATUS[ps.existingSettlement.status] || ps.existingSettlement.status}</strong> ·{' '}
+              {money(ps.existingSettlement.netPayoutAmount)}
               {ps.existingSettlement.settledAt && ` · giải ngân ${fmt(ps.existingSettlement.settledAt)}`}
-              {ps.existingSettlement.status === 'REJECTED' && ps.existingSettlement.rejectionReason && <div className='mt-1'>Lý do: {ps.existingSettlement.rejectionReason}</div>}
+              {ps.existingSettlement.status === 'REJECTED' && ps.existingSettlement.rejectionReason && (
+                <div className='mt-1'>Lý do: {ps.existingSettlement.rejectionReason}</div>
+              )}
             </div>
           )}
           {!ps.existingSettlement || ps.existingSettlement.status === 'REJECTED' ? (
-            <button type='button' disabled={busy || !ps.grossRevenue} className='tb-btn tb-btn-solid' onClick={requestPayout}>
-              <Wallet size={14} /> {busy ? 'Đang gửi...' : ps.existingSettlement ? 'Gửi lại yêu cầu đối soát' : 'Yêu cầu đối soát & rút tiền'}
+            <button
+              type='button'
+              disabled={busy || !ps.grossRevenue}
+              className='tb-btn tb-btn-solid'
+              onClick={requestPayout}>
+              <Wallet size={14} />{' '}
+              {busy
+                ? 'Đang gửi...'
+                : ps.existingSettlement
+                  ? 'Gửi lại yêu cầu đối soát'
+                  : 'Yêu cầu đối soát & rút tiền'}
             </button>
           ) : null}
-          <p className='text-xs text-[#71717a]'>Tiền được chuyển vào tài khoản ngân hàng trong hồ sơ KYC sau khi Admin duyệt đối soát.</p>
+          <p className='text-xs text-[#71717a]'>
+            Tiền được chuyển vào tài khoản ngân hàng trong hồ sơ KYC sau khi Admin duyệt đối soát.
+          </p>
+        </div>
+      )}
+      {payoutConfirm && (
+        <div className='fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4' onClick={() => setPayoutConfirm(false)}>
+          <div className='relative bg-white rounded-2xl p-6 w-full max-w-md space-y-4 shadow-xl' onClick={(e) => e.stopPropagation()}>
+            <button type='button' onClick={() => setPayoutConfirm(false)} className='absolute top-4 right-4 text-[#71717a] hover:text-[#09090b]' aria-label='Đóng'>
+              <X size={18} />
+            </button>
+            <Wallet size={40} className='mx-auto text-[#09090b]' />
+            <h2 className='text-xl font-bold text-center'>Xác nhận yêu cầu đối soát</h2>
+            <p className='text-sm text-center text-[#52525b]'>Bạn có chắc muốn gửi yêu cầu đối soát và rút tiền cho sự kiện này?</p>
+            <div className='flex gap-3'>
+              <button type='button' className='tb-btn w-full' onClick={() => setPayoutConfirm(false)}>Hủy</button>
+              <button type='button' className='tb-btn tb-btn-solid w-full' onClick={submitPayout}>Xác nhận gửi</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {payoutSuccess && (
+        <div className='fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4' onClick={() => setPayoutSuccess(null)}>
+          <div className='relative bg-white rounded-2xl p-6 w-full max-w-md text-center space-y-4 shadow-xl' onClick={(e) => e.stopPropagation()}>
+            <button type='button' onClick={() => setPayoutSuccess(null)} className='absolute top-4 right-4 text-[#71717a] hover:text-[#09090b]' aria-label='Đóng'>
+              <X size={18} />
+            </button>
+            <CheckCircle2 size={48} className='mx-auto text-emerald-600' />
+            <h2 className='text-xl font-bold'>Đã gửi yêu cầu đối soát</h2>
+            <p className='text-sm text-[#52525b]'>{payoutSuccess.message}</p>
+            <p className='text-lg font-extrabold'>{money(payoutSuccess.amount)}</p>
+            <p className='text-xs text-[#71717a]'>Admin sẽ kiểm tra và chuyển khoản vào tài khoản ngân hàng trong hồ sơ KYC của bạn.</p>
+            <button type='button' className='tb-btn tb-btn-solid w-full' onClick={() => setPayoutSuccess(null)}>Đã hiểu</button>
+          </div>
         </div>
       )}
     </div>

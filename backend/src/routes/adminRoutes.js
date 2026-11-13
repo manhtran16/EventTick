@@ -41,6 +41,9 @@ router.put("/payouts/:id/reject", adminCtrl.rejectPayout);
 
 // UC43: Hoàn tiền — CHỈ khi sự kiện bị huỷ (hoàn hàng loạt). Không có hoàn vé lẻ.
 router.get("/refunds", adminCtrl.listRefunds);
+router.get("/refunds/:id", adminCtrl.getRefundStatus);
+router.put("/refunds/:id/complete", adminCtrl.completeRefund);
+router.put("/refunds/:id/reject", adminCtrl.rejectRefund);
 router.post("/events/:id/bulk-refund", adminCtrl.bulkRefundEvent);
 
 // Chợ vé bán lại: chi trả tiền cho người bán sau khi vé được mua

@@ -513,6 +513,7 @@ exports.cancel = ah(async (req, res) => {
       releasedOrders: bulkResult.releasedPendingOrders,
       refundedCount: bulkResult.refundedOrdersCount,
       totalRefundAmount: bulkResult.totalRefundAmount,
+      refundedTicketsCount: bulkResult.refundedTicketsCount,
       notifiedBuyersCount: bulkResult.notifiedBuyersCount,
     });
   }
@@ -1227,7 +1228,7 @@ exports.listPayouts = ah(async (req, res) => {
       rejectionReason: s.rejection_reason,
       bankTransferReceiptUrl: s.bank_transfer_receipt_url,
       settledAt: s.settled_at,
-      createdAt: s.created_at,
+      createdAt: s.created_at || s._id.getTimestamp(),
     })),
   });
 });

@@ -33,6 +33,11 @@ const schema = new Schema(
     total_amount: { type: Number, required: true, min: 0 },
     attendee_form_answers: { type: Schema.Types.Mixed },
     vat_invoice_info: { type: Schema.Types.Mixed },
+    refund_bank_info: {
+      bank_name: { type: String, trim: true, maxlength: 100 },
+      account_no: { type: String, trim: true, maxlength: 50 },
+      account_holder: { type: String, trim: true, maxlength: 150 },
+    },
     status: {
       type: String,
       enum: ["PENDING_PAYMENT", "PAID", "EXPIRED", "CANCELLED", "REFUNDED"],

@@ -13,7 +13,7 @@ import {
   QrCode,
   BarChart3,
   LogOut,
-  ArrowLeft,
+  Home,
   User,
   Menu,
   X,
@@ -100,10 +100,10 @@ export default function DashboardLayout() {
 
       {/* Sidebar N3 */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-[#09090b] text-white flex flex-col justify-between shrink-0 border-r border-[#27272a] transform transition-transform duration-200 ease-in-out md:static md:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 w-64 bg-[#09090b] text-white flex flex-col justify-between shrink-0 border-r border-[#27272a] transform transition-transform duration-200 ease-in-out md:sticky md:top-0 md:h-screen md:translate-x-0 ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}>
-        <div>
+        <div className='min-h-0 flex-1 overflow-y-auto'>
           {/* Logo & Role Badge */}
           <div className='p-5 sm:p-6 border-b border-[#27272a] flex items-center justify-between'>
             <Link to={PATHS.HOME} className='flex items-center gap-2.5'>
@@ -152,18 +152,18 @@ export default function DashboardLayout() {
           <Link
             to={PATHS.HOME}
             className='flex items-center gap-2 px-3.5 py-2 text-xs text-[#a1a1aa] hover:text-white hover:bg-[#18181b] rounded-full transition-colors'>
-            <ArrowLeft size={14} />
-            <span>Về cổng công cộng</span>
+            <Home size={14} />
+            <span>Về trang chủ</span>
           </Link>
           <div className='flex items-center justify-between pt-2 px-1'>
             <div className='truncate pr-2'>
-              <div className='text-xs font-semibold truncate'>{user?.full_name || user?.username}</div>
+              <div className='text-xs font-semibold truncate'>{user?.full_name || user?.name || user?.username}</div>
               <div className='text-[11px] text-[#71717a] truncate'>{user?.email}</div>
             </div>
             <button
               type='button'
               onClick={handleLogout}
-              className='p-2 text-[#a1a1aa] hover:text-white hover:bg-[#27272a] rounded-full transition-colors'
+              className='p-2 text-[#a1a1aa] hover:text-red-400 hover:bg-[#27272a] rounded-full transition-colors'
               title='Đăng xuất'>
               <LogOut size={15} />
             </button>
@@ -187,11 +187,29 @@ export default function DashboardLayout() {
               Hệ thống quản trị • {user?.role}
             </div>
           </div>
-          <div className='flex items-center gap-3 text-xs text-[#71717a] shrink-0'>
+          <div className='flex items-center gap-2 sm:gap-3 text-xs text-[#71717a] shrink-0'>
+            <Link
+              to={PATHS.HOME}
+              className='flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium text-[#09090b] hover:bg-[#f4f4f6] border border-[#e4e4e7] transition-colors'
+              title='Về trang chủ'>
+              <Home size={14} />
+              <span className='hidden sm:inline'>Trang chủ</span>
+            </Link>
+
             <NotificationBell />
-            <span className='hidden sm:inline'>
-              Tài khoản: <strong className='text-[#09090b]'>{user?.username}</strong>
+
+            <span className='hidden md:inline pl-2 border-l border-[#e4e4e7]'>
+              Tài khoản: <strong className='text-[#09090b]'>{user?.full_name || user?.name || user?.username}</strong>
             </span>
+
+            <button
+              type='button'
+              onClick={handleLogout}
+              className='flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 rounded-full transition-colors'
+              title='Đăng xuất'>
+              <LogOut size={14} />
+              <span className='hidden sm:inline'>Đăng xuất</span>
+            </button>
           </div>
         </header>
 

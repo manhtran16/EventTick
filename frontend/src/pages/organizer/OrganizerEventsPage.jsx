@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { PlusCircle, Calendar, MapPin, BarChart3, Tag, Pencil, Send, Undo2, XCircle, Loader2 } from 'lucide-react';
 import { api } from '../../api/client';
 import { useToast } from '../../context/ToastContext';
+import { inputCls } from '../../components/FormField';
 import { PATHS } from '../../routes/paths';
 
 const STATUS = {
@@ -22,6 +23,9 @@ export default function OrganizerEventsPage() {
   const navigate = useNavigate();
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [submittingEvent, setSubmittingEvent] = useState(null);
+  const [cancellingEvent, setCancellingEvent] = useState(null);
+  const [cancelReason, setCancelReason] = useState('');
   const [busy, setBusy] = useState('');
 
   const load = useCallback(async () => {
@@ -46,18 +50,28 @@ export default function OrganizerEventsPage() {
       const r = await api.post(`/organizer/events/${e._id}/${action}`, body || {});
       showToast(r.message || 'Thành công');
       await load();
+      return true;
     } catch (err) {
       showToast(err.message || 'Không thực hiện được');
+      return false;
     } finally {
       setBusy('');
     }
   };
 
-  const cancelEvent = (e) => {
-    const reason = window.prompt('Lý do huỷ sự kiện (khách đã mua vé sẽ được hoàn tiền):');
-    if (reason === null) return;
-    if (!reason.trim()) return showToast('Vui lòng nhập lý do huỷ');
-    act(e, 'cancel', null, { reason: reason.trim() });
+  const submitEvent = async () => {
+    if (!submittingEvent) return;
+    const submitted = await act(submittingEvent, 'submit', null);
+    if (submitted) setSubmittingEvent(null);
+  };
+
+  const cancelEvent = async () => {
+    if (!cancelReason.trim()) return showToast('Vui lòng nhập lý do huỷ');
+    const cancelled = await act(cancellingEvent, 'cancel', null, { reason: cancelReason.trim() });
+    if (cancelled) {
+      setCancellingEvent(null);
+      setCancelReason('');
+    }
   };
 
   return (
@@ -131,7 +145,7 @@ export default function OrganizerEventsPage() {
                       <Tag size={13} /> Voucher
                     </Link>
                     {e.status === 'DRAFT' && (
-                      <button type='button' disabled={b('submit')} className='tb-btn tb-btn-solid tb-btn-sm' onClick={() => act(e, 'submit', 'Gửi sự kiện cho Admin duyệt?')}>
+                      <button type='button' disabled={b('submit')} className='tb-btn tb-btn-solid tb-btn-sm' onClick={() => setSubmittingEvent(e)}>
                         <Send size={13} /> {b('submit') ? 'Đang gửi...' : 'Gửi duyệt'}
                       </button>
                     )}
@@ -146,7 +160,7 @@ export default function OrganizerEventsPage() {
                       </Link>
                     )}
                     {['PUBLISHED', 'APPROVED'].includes(e.status) && (
-                      <button type='button' disabled={b('cancel')} className='tb-btn tb-btn-outline tb-btn-sm text-red-700' onClick={() => cancelEvent(e)}>
+                      <button type='button' disabled={b('cancel')} className='tb-btn tb-btn-outline tb-btn-sm text-red-700' onClick={() => { setCancellingEvent(e); setCancelReason(''); }}>
                         <XCircle size={13} /> Huỷ sự kiện
                       </button>
                     )}
@@ -155,6 +169,44 @@ export default function OrganizerEventsPage() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {cancellingEvent && (
+        <div className='fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50' onClick={() => setCancellingEvent(null)}>
+          <div className='bg-white rounded-2xl w-full max-w-md p-6 space-y-4' onClick={(event) => event.stopPropagation()}>
+            <h3 className='font-bold'>Huỷ sự kiện &quot;{cancellingEvent.title}&quot;?</h3>
+            <p className='text-sm text-[#52525b]'>Khách đã mua vé sẽ được hoàn tiền. Vui lòng nhập lý do huỷ để Admin và khách hàng được thông báo.</p>
+            <div>
+              <label htmlFor='cancel-reason' className='block text-xs font-semibold uppercase tracking-wider text-[#52525b] mb-1.5'>Lý do huỷ (bắt buộc)</label>
+              <textarea id='cancel-reason' rows={4} maxLength={1000} className={inputCls} value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} />
+            </div>
+            <div className='flex gap-3'>
+              <button type='button' className='tb-btn tb-btn-solid' disabled={busy === `${cancellingEvent._id}:cancel`} onClick={cancelEvent}>
+                Xác nhận huỷ
+              </button>
+              <button type='button' className='tb-btn tb-btn-outline' disabled={busy === `${cancellingEvent._id}:cancel`} onClick={() => setCancellingEvent(null)}>
+                Huỷ bỏ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {submittingEvent && (
+        <div className='fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50' onClick={() => setSubmittingEvent(null)}>
+          <div className='bg-white rounded-2xl w-full max-w-md p-6 space-y-4' onClick={(event) => event.stopPropagation()}>
+            <h3 className='font-bold'>Gửi sự kiện &quot;{submittingEvent.title}&quot; để duyệt?</h3>
+            <p className='text-sm text-[#52525b]'>Sự kiện sẽ được chuyển đến Admin kiểm tra. Bạn có thể rút lại để chỉnh sửa nếu cần.</p>
+            <div className='flex gap-3'>
+              <button type='button' className='tb-btn tb-btn-solid' disabled={busy === `${submittingEvent._id}:submit`} onClick={submitEvent}>
+                Xác nhận gửi duyệt
+              </button>
+              <button type='button' className='tb-btn tb-btn-outline' disabled={busy === `${submittingEvent._id}:submit`} onClick={() => setSubmittingEvent(null)}>
+                Huỷ
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

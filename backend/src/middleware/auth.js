@@ -6,7 +6,9 @@ const { verifyToken } = require("../utils/jwt");
  * mà không bắt buộc phải đăng nhập (vd: GET /auth dùng cho Header.jsx).
  */
 function attachUser(req, res, next) {
-  const token = req.cookies?.token;
+  const authHeader = req.headers.authorization;
+  const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  const token = req.cookies?.token || bearerToken;
   if (token) {
     try {
       req.user = verifyToken(token);

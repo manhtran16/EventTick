@@ -6,8 +6,8 @@ const { ah, httpError, validId, str } = require("../utils/http");
 
 const seatLabel = (s) => (s ? `${s.section_name}-${s.row_label}${s.seat_number}` : null);
 
-// Tin bán đã quá hạn giữ chỗ mà job chưa kịp nhả: coi như còn bán
-const expiredReserveFilter = () => ({ status: "RESERVED", reserved_until: { $lt: new Date() } });
+// Tin bán đã quá hạn giữ chỗ mà job chưa kịp nhả (và chưa bị seller yêu cầu huỷ): coi như còn bán
+const expiredReserveFilter = () => ({ status: "RESERVED", reserved_until: { $lt: new Date() }, cancel_requested: { $ne: true } });
 
 /* ============================ NGƯỜI BÁN ============================ */
 
@@ -65,6 +65,7 @@ exports.createListing = ah(async (req, res) => {
         original_price: originalPrice,
         resale_price: priceNum,
         status: "ACTIVE",
+        cancel_requested: false,
         bundle_code: bundleCode,
         allow_partial: allowPartial,
         payout_bank: payoutBank,
@@ -80,7 +81,7 @@ exports.createListing = ah(async (req, res) => {
       created.push(listing);
     }
   } catch (err) {
-    await ResaleListing.updateMany({ _id: { $in: created.map((l) => l._id) } }, { status: "CANCELLED" });
+    await ResaleListing.updateMany({ _id: { $in: created.map((l) => l._id) } }, { status: "CANCELLED", cancel_requested: false });
     await Ticket.updateMany({ _id: { $in: ticketIds }, status: "LISTED_RESALE" }, { status: "VALID" });
     throw err;
   }
@@ -94,23 +95,45 @@ exports.createListing = ah(async (req, res) => {
   });
 });
 
-// DELETE /v1/resale/listings/:id — Huỷ tin bán (chỉ khi chưa có người đang thanh toán)
+// DELETE /v1/resale/listings/:id — Huỷ tin bán (hướng C: huỷ ngay nếu ACTIVE; trì hoãn nếu đang RESERVED)
 exports.cancelListing = ah(async (req, res) => {
+  const listingId = validId(req.params.id, "Mã tin bán");
+
+  // 1. Thử huỷ ngay bằng atomic update nếu tin đang ACTIVE hoặc đã quá hạn giữ chỗ
   const listing = await ResaleListing.findOneAndUpdate(
-    { _id: validId(req.params.id, "Mã tin bán"), seller_id: req.user.id, $or: [{ status: "ACTIVE" }, expiredReserveFilter()] },
-    { $set: { status: "CANCELLED" }, $unset: { reserved_until: 1, buyer_order_id: 1 } },
+    { _id: listingId, seller_id: req.user.id, $or: [{ status: "ACTIVE" }, expiredReserveFilter()] },
+    { $set: { status: "CANCELLED", cancel_requested: false }, $unset: { reserved_until: 1, buyer_order_id: 1 } },
     { new: true },
   );
-  if (!listing) {
-    const exists = await ResaleListing.findOne({ _id: req.params.id, seller_id: req.user.id });
-    if (!exists) throw httpError("Không tìm thấy tin bán vé", 404);
-    if (exists.status === "RESERVED") throw httpError("Đang có người thanh toán vé này, vui lòng thử lại sau ít phút", 409);
-    throw httpError(`Tin bán vé đang ở trạng thái ${exists.status}`, 400);
+
+  if (listing) {
+    await Ticket.updateOne({ _id: listing.ticket_id, status: "LISTED_RESALE" }, { status: "VALID" });
+    await audit(req, "RESALE_LIST_CANCEL", "resale_listings", listing._id, { ticketId: listing.ticket_id });
+    return res.json({ success: true, message: "Đã huỷ đăng bán lại vé thành công" });
   }
 
-  await Ticket.updateOne({ _id: listing.ticket_id, status: "LISTED_RESALE" }, { status: "VALID" });
-  await audit(req, "RESALE_LIST_CANCEL", "resale_listings", listing._id, { ticketId: listing.ticket_id });
-  res.json({ success: true, message: "Đã huỷ đăng bán lại vé thành công" });
+  // 2. Nếu đang có người giữ chỗ thanh toán (RESERVED): ghi nhận huỷ trì hoãn (Hướng C)
+  const reservedListing = await ResaleListing.findOneAndUpdate(
+    { _id: listingId, seller_id: req.user.id, status: "RESERVED" },
+    { $set: { cancel_requested: true } },
+    { new: true },
+  );
+
+  if (reservedListing) {
+    await audit(req, "RESALE_LIST_CANCEL_REQUESTED", "resale_listings", reservedListing._id, { ticketId: reservedListing.ticket_id });
+    return res.json({
+      success: true,
+      cancelRequested: true,
+      message: "Vé đang có người thanh toán, yêu cầu hủy sẽ có hiệu lực sau tối đa 10 phút nếu họ không hoàn tất.",
+    });
+  }
+
+  // 3. Kiểm tra lý do thất bại nếu không trúng 2 bước trên
+  const exists = await ResaleListing.findOne({ _id: listingId, seller_id: req.user.id });
+  if (!exists) throw httpError("Không tìm thấy tin bán vé", 404);
+  if (exists.status === "SOLD") throw httpError("Vé đã được bán thành công, không thể huỷ tin", 400);
+  if (exists.status === "CANCELLED") throw httpError("Tin bán vé đã được huỷ trước đó", 400);
+  throw httpError(`Tin bán vé đang ở trạng thái ${exists.status}`, 400);
 });
 
 // GET /v1/resale/my-listings
@@ -133,6 +156,7 @@ exports.getMyListings = ah(async (req, res) => {
       resalePrice: l.resale_price,
       originalPrice: l.original_price,
       status: l.status,
+      cancelRequested: Boolean(l.cancel_requested),
       payoutStatus: l.payout_status || "NONE",
       payoutAmount: l.payout_amount,
       paidOutAt: l.paid_out_at,
@@ -150,7 +174,9 @@ exports.getMyListings = ah(async (req, res) => {
 /** Các tin bán còn mua được (ACTIVE hoặc giữ chỗ đã hết hạn), kèm vé đã populate */
 async function loadBuyableListings(ticketMatch = {}, { includeHeld = false } = {}) {
   // includeHeld: lấy thêm các tin đang được người khác giữ chỗ để hiển thị "đang chờ thanh toán"
-  const statusClause = includeHeld ? [{ status: "ACTIVE" }, { status: "RESERVED" }] : [{ status: "ACTIVE" }, expiredReserveFilter()];
+  const statusClause = includeHeld
+    ? [{ status: "ACTIVE", cancel_requested: { $ne: true } }, { status: "RESERVED" }]
+    : [{ status: "ACTIVE", cancel_requested: { $ne: true } }, expiredReserveFilter()];
   const listings = await ResaleListing.find({ $or: statusClause })
     .populate({
       path: "ticket_id",
@@ -271,7 +297,7 @@ exports.getEventListings = ah(async (req, res) => {
 
 // POST /v1/resale/orders — Giữ chỗ các vé bán lại 10 phút, trả về orderId để sang trang thanh toán
 exports.createResaleOrder = ah(async (req, res) => {
-  const { eventId, listingIds, attendeeFormAnswers, voucherCode, agreeTerms } = req.body;
+  const { eventId, listingIds, attendeeFormAnswers, refundBankInfo, voucherCode, agreeTerms } = req.body;
   validId(eventId, "Mã sự kiện");
   if (agreeTerms !== true) throw httpError("Bạn cần đồng ý với Quy định sử dụng tính năng Bán lại vé", 400);
 
@@ -280,6 +306,7 @@ exports.createResaleOrder = ah(async (req, res) => {
     eventId,
     listingIds,
     attendeeFormAnswers,
+    refundBankInfo,
     voucherCode,
   });
 

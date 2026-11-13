@@ -40,6 +40,12 @@ function buildTermsHtml({ event, sessions, profile, commission, customTerms }) {
   ].join("");
 }
 
+const stripAdminSignature = (html) =>
+  String(html || "").replace(
+    /<p><b>ĐẠI DIỆN BÊN A \(SÀN EVENTTICK\)<\/b><br\/>Chữ ký: <em>Dương<\/em><br\/>Họ và tên: Bùi Tuấn Dương<\/p>/g,
+    "",
+  );
+
 const withCommission = (html, commission) =>
   html.replace(/<strong data-commission>[^<]*<\/strong>/g, `<strong data-commission>${Number(commission).toFixed(2)}%</strong>`);
 
@@ -82,15 +88,18 @@ function buildSignedPdf({ contract, event, profile, signaturePng, signerIp, sign
     doc.moveDown(0.3).font("vn").fontSize(9).fillColor("#555").text(`Mã hợp đồng: ${contract._id}`, { align: "center" });
     doc.fillColor("#000").moveDown();
 
-    doc.font("vn").fontSize(10.5).text(htmlToText(contract.contract_terms_html), { align: "left", lineGap: 3 });
+    doc.font("vn").fontSize(10.5).text(htmlToText(stripAdminSignature(contract.contract_terms_html)), { align: "left", lineGap: 3 });
     doc.moveDown(1.5);
 
-    doc.font("vn-bold").fontSize(11).text("ĐẠI DIỆN BÊN B (NHÀ TỔ CHỨC) KÝ XÁC NHẬN");
-    doc.font("vn").fontSize(10).text(`${profile.organization_name} – MST ${profile.tax_code}`);
-    doc.moveDown(0.5);
-    if (doc.y > 650) doc.addPage();
-    doc.image(signaturePng, { fit: [180, 80] });
-    doc.moveDown(0.5);
+    if (doc.y > 620) doc.addPage();
+    const signatureTop = doc.y;
+    doc.font("vn-bold").fontSize(11).text("ĐẠI DIỆN BÊN A (SÀN EVENTTICK)", 50, signatureTop, { width: 240 });
+    doc.text("ĐẠI DIỆN BÊN B (NHÀ TỔ CHỨC)", 320, signatureTop, { width: 240 });
+    doc.font("vn").fontSize(18).text("Dương", 50, signatureTop + 28, { width: 240 });
+    doc.fontSize(10).text("Bùi Tuấn Dương", 50, signatureTop + 58, { width: 240 });
+    doc.fontSize(10).text(`${profile.organization_name} – MST ${profile.tax_code}`, 320, signatureTop + 28, { width: 240 });
+    doc.image(signaturePng, { fit: [180, 80], x: 350, y: signatureTop + 48 });
+    doc.y = signatureTop + 145;
 
     doc.fontSize(8.5).fillColor("#444");
     doc.text(`Thời điểm ký: ${fmtDate(signedAt)}`);
@@ -100,4 +109,4 @@ function buildSignedPdf({ contract, event, profile, signaturePng, signerIp, sign
   });
 }
 
-module.exports = { buildTermsHtml, withCommission, htmlToText, buildSignedPdf, contractHash, plainToHtml };
+module.exports = { buildTermsHtml, stripAdminSignature, withCommission, htmlToText, buildSignedPdf, contractHash, plainToHtml };

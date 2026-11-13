@@ -1,7 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Html5Qrcode } from 'html5-qrcode';
-import { CheckCircle2, XCircle, Camera, CameraOff, Volume2, VolumeX, BarChart3, Keyboard, AlertTriangle } from 'lucide-react';
+import {
+  CheckCircle2,
+  XCircle,
+  Camera,
+  CameraOff,
+  Volume2,
+  VolumeX,
+  BarChart3,
+  Keyboard,
+  AlertTriangle,
+} from 'lucide-react';
 import { api } from '../../api/client';
 import { PATHS } from '../../routes/paths';
 import { inputCls } from '../../components/FormField';
@@ -20,6 +30,7 @@ export default function StaffCheckInPage() {
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [camOn, setCamOn] = useState(false);
+  const [camStarting, setCamStarting] = useState(false);
   const [camError, setCamError] = useState('');
   const [sound, setSound] = useState(true);
   const [last, setLast] = useState(null);
@@ -115,7 +126,9 @@ export default function StaffCheckInPage() {
       setBusy(true);
 
       // QR của hệ thống: "<mã vé>.<chữ ký>"
-      const [code, hash] = text.includes('.') ? text.split('.') : [text, ''];
+      const isJson = text.startsWith('{');
+      const [rawCode, hash] = !isJson && text.includes('.') ? text.split('.') : [text, ''];
+      const code = isJson ? rawCode : rawCode.replace(/^[#\s]+/, '').trim().toUpperCase();
       try {
         const res = await api.post('/booking/check-in', {
           ticketCode: code,
@@ -161,24 +174,91 @@ export default function StaffCheckInPage() {
         /* đã dừng */
       }
     }
+    setCamStarting(false);
     setCamOn(false);
   }, []);
 
   const startCamera = async () => {
     setCamError('');
+    if (
+      typeof window !== 'undefined' &&
+      !window.isSecureContext &&
+      window.location.hostname !== 'localhost' &&
+      window.location.hostname !== '127.0.0.1'
+    ) {
+      setCamError(
+        'Trình duyệt trên điện thoại yêu cầu kết nối HTTPS (hoặc localhost) để mở camera. Hãy dùng HTTPS hoặc nhập mã bên dưới.',
+      );
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCamError('Trình duyệt của bạn không hỗ trợ camera hoặc đang chặn quyền truy cập.');
+      return;
+    }
+
+    // Hiện khung trước để container không bị display: none (clientWidth = 0 làm lỗi video trên mobile)
+    setCamOn(true);
+    setCamStarting(true);
+
     try {
+      if (scannerRef.current) {
+        try {
+          if (scannerRef.current.isScanning) await scannerRef.current.stop();
+          scannerRef.current.clear();
+        } catch {
+          /* đã dừng */
+        }
+      }
+
       const sc = new Html5Qrcode(READER_ID);
       scannerRef.current = sc;
-      await sc.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 240, height: 240 } }, (text) => verifyRef.current(text), () => {});
-      setCamOn(true);
+      const qrConfig = {
+        fps: 10,
+        qrbox: (viewfinderWidth, viewfinderHeight) => {
+          const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+          const size = Math.min(250, Math.max(120, Math.floor(minEdge * 0.72)));
+          return { width: size, height: size };
+        },
+      };
+
+      try {
+        await sc.start(
+          { facingMode: 'environment' },
+          qrConfig,
+          (text) => verifyRef.current(text),
+          () => {},
+        );
+      } catch {
+        const cameras = await Html5Qrcode.getCameras().catch(() => []);
+        if (cameras?.length) {
+          const backCam =
+            cameras.find((c) => /back|rear|sau|environment/i.test(c.label)) || cameras[cameras.length - 1];
+          await sc.start(
+            backCam.id,
+            qrConfig,
+            (text) => verifyRef.current(text),
+            () => {},
+          );
+        } else {
+          await sc.start(
+            { facingMode: 'user' },
+            qrConfig,
+            (text) => verifyRef.current(text),
+            () => {},
+          );
+        }
+      }
     } catch (err) {
       scannerRef.current = null;
+      setCamOn(false);
+      const msg = String(err?.message || err);
       setCamError(
-        /Permission|NotAllowed/i.test(String(err))
-          ? 'Trình duyệt chưa được cấp quyền camera. Hãy cho phép camera hoặc dùng ô nhập mã bên dưới.'
+        /Permission|NotAllowed|denied/i.test(msg)
+          ? 'Trình duyệt chưa được cấp quyền camera. Hãy cho phép camera trong cài đặt hoặc dùng ô nhập mã bên dưới.'
           : 'Không mở được camera (cần HTTPS hoặc localhost). Hãy dùng ô nhập mã bên dưới.',
       );
-      setCamOn(false);
+    } finally {
+      setCamStarting(false);
     }
   };
 
@@ -206,13 +286,16 @@ export default function StaffCheckInPage() {
           </p>
         </div>
         <div className='flex gap-2'>
-          <button type='button' className='tb-btn tb-btn-outline tb-btn-sm' onClick={() => setSound((v) => !v)} aria-label='Bật tắt âm thanh'>
+          <button
+            type='button'
+            className='tb-btn tb-btn-outline tb-btn-sm'
+            onClick={() => setSound((v) => !v)}
+            aria-label='Bật tắt âm thanh'>
             {sound ? <Volume2 size={14} /> : <VolumeX size={14} />}
           </button>
           <Link
             to={`${PATHS.STAFF_STATS}${selectedEventId ? `?eventId=${selectedEventId}` : ''}`}
-            className='tb-btn tb-btn-outline tb-btn-sm'
-          >
+            className='tb-btn tb-btn-outline tb-btn-sm'>
             <BarChart3 size={14} /> Thống kê
           </Link>
         </div>
@@ -223,20 +306,22 @@ export default function StaffCheckInPage() {
           <AlertTriangle size={36} className='mx-auto text-amber-600' />
           <h2 className='text-base font-bold'>Chưa có sự kiện nào được phân công</h2>
           <p className='text-sm text-amber-700 max-w-md mx-auto'>
-            Bạn chỉ có thể soát vé và xem thống kê của các sự kiện mà người tổ chức đã phân công bạn vào danh sách nhân viên.
+            Bạn chỉ có thể soát vé và xem thống kê của các sự kiện mà người tổ chức đã phân công bạn vào danh sách nhân
+            viên.
           </p>
         </div>
       ) : (
         <div className='bg-white border border-[#e4e4e7] rounded-2xl p-5 space-y-4'>
           <div className='grid gap-3 sm:grid-cols-2'>
             <label className='flex flex-col gap-1 text-sm'>
-              <span className='text-xs font-semibold uppercase tracking-wider text-[#52525b]'>Sự kiện đang soát vé</span>
+              <span className='text-xs font-semibold uppercase tracking-wider text-[#52525b]'>
+                Sự kiện đang soát vé
+              </span>
               <select
                 aria-label='Sự kiện đang soát vé'
                 className={inputCls}
                 value={selectedEventId}
-                onChange={(e) => handleEventChange(e.target.value)}
-              >
+                onChange={(e) => handleEventChange(e.target.value)}>
                 {events.map((e) => (
                   <option key={e.id} value={e.id}>
                     {e.title}
@@ -271,15 +356,27 @@ export default function StaffCheckInPage() {
               </button>
             )}
           </div>
-          <div id={READER_ID} className={camOn ? 'rounded-xl overflow-hidden border border-[#e4e4e7]' : 'hidden'} />
-          {camError && <p className='text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2'>{camError}</p>}
+          <div
+            className={
+              camOn ? 'relative rounded-xl overflow-hidden border border-[#e4e4e7] bg-black' : 'h-0 overflow-hidden'
+            }>
+            {camStarting && (
+              <div className='flex items-center justify-center h-64 text-sm text-white/80'>
+                Đang khởi động camera...
+              </div>
+            )}
+            <div id={READER_ID} className='w-full' />
+          </div>
+          {camError && (
+            <p className='text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2'>{camError}</p>
+          )}
 
           <form onSubmit={submitManual} className='flex gap-2'>
             <div className='relative flex-1'>
               <Keyboard size={16} className='absolute left-3.5 top-3 text-[#71717a]' />
               <input
                 ref={inputRef}
-                className={`${inputCls} !pl-10 font-mono`}
+                className={`${inputCls} pl-10! font-mono`}
                 placeholder='Nhập hoặc quét mã vé (TK-...)'
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
@@ -291,12 +388,17 @@ export default function StaffCheckInPage() {
               {busy ? 'Đang kiểm tra...' : 'Soát vé'}
             </button>
           </form>
-          <p className='text-xs text-[#71717a]'>Máy quét cầm tay hoạt động như bàn phím: bấm vào ô nhập rồi quét, vé tự được gửi đi.</p>
+          <p className='text-xs text-[#71717a]'>
+            Máy quét cầm tay hoạt động như bàn phím: bấm vào ô nhập rồi quét, vé tự được gửi đi.
+          </p>
         </div>
       )}
 
       {last && (
-        <div className={`rounded-2xl border p-5 flex items-start gap-4 ${last.ok ? 'bg-[#09090b] text-white border-[#09090b]' : 'bg-red-50 text-red-800 border-red-200'}`} role='status' aria-live='polite'>
+        <div
+          className={`rounded-2xl border p-5 flex items-start gap-4 ${last.ok ? 'bg-[#09090b] text-white border-[#09090b]' : 'bg-red-50 text-red-800 border-red-200'}`}
+          role='status'
+          aria-live='polite'>
           {last.ok ? <CheckCircle2 size={36} className='shrink-0' /> : <XCircle size={36} className='shrink-0' />}
           <div className='min-w-0'>
             <div className='text-lg font-bold'>{last.ok ? 'HỢP LỆ' : 'KHÔNG HỢP LỆ'}</div>
@@ -321,13 +423,14 @@ export default function StaffCheckInPage() {
                   {r.ok ? <CheckCircle2 size={15} /> : <XCircle size={15} className='text-red-600' />}
                   <span className='font-mono text-xs truncate'>{r.code}</span>
                 </span>
-                <span className='text-xs text-[#71717a] shrink-0'>{r.ok ? r.zone : r.message} · {r.time}</span>
+                <span className='text-xs text-[#71717a] shrink-0'>
+                  {r.ok ? r.zone : r.message} · {r.time}
+                </span>
               </li>
             ))}
           </ul>
         </div>
       )}
-
     </div>
   );
 }
