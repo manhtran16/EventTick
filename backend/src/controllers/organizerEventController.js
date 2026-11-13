@@ -86,10 +86,10 @@ function parseTier(raw, sessionStart, label = "Hạng vé") {
   const from = r.saleStartTime ? date(r.saleStartTime, `${label}: giờ mở bán`) : new Date();
   const to = r.saleEndTime ? date(r.saleEndTime, `${label}: giờ đóng bán`) : (sessionStart || new Date(from.getTime() + 7 * 24 * HOUR));
   let safeTo = to;
-  if (to <= from) {
-    console.warn(`⚠️ [parseTier] ${label}: giờ đóng bán (${to.toISOString()}) <= giờ mở bán (${from.toISOString()}), tự động điều chỉnh đóng bán sau mở bán 1 giờ`);
-    safeTo = new Date(from.getTime() + HOUR);
-  }
+  if (r.saleStartTime && r.saleEndTime && to <= from) throw httpError(`${label}: giờ đóng bán phải sau giờ mở bán`, 400);
+  if (sessionStart && r.saleStartTime && from >= sessionStart) throw httpError(`${label}: giờ mở bán phải trước giờ bắt đầu suất diễn`, 400);
+  if (sessionStart && r.saleEndTime && to > sessionStart) throw httpError(`${label}: giờ đóng bán không được sau giờ bắt đầu suất diễn`, 400);
+  if (to <= from) safeTo = new Date(from.getTime() + HOUR); // mặc định (không nhập): đóng bán sau mở bán 1 giờ
   if (r.zoneColor && !COLOR.test(r.zoneColor)) throw httpError(`${label}: zoneColor phải dạng #RRGGBB`, 400);
   const rawZoneType = String(r.zoneType ?? r.zone_type ?? "GA").toUpperCase();
   if (!["GA", "SEATED"].includes(rawZoneType)) {
@@ -216,8 +216,22 @@ exports.create = ah(async (req, res) => {
   if (!rawSessions.length) throw httpError("Cần ít nhất 1 suất diễn", 400);
   if (rawSessions.length > 30) throw httpError("Tối đa 30 suất diễn", 400);
   const sessionDefs = rawSessions.map((s, i) => parseSession(s, i, { requireFuture: !draft }));
+  const layoutKind = String(payload.seatLayout || "NONE").toUpperCase();
+  // Vé ngồi: tên hạng vé và số lượng lấy từ file Excel, bỏ qua số client gửi; giá, màu, giờ bán lấy từ form theo tên hạng
+  let seatedTiers = null;
+  if (layoutKind === "SEATED_FILE") {
+    const sm = require("./seatMapController");
+    seatedTiers = sm.seatedTiersOf((await sm.builtSeated(files)).sections);
+  }
   const tierLists = rawSessions.map((s, i) => {
-    const list = s.tickets || s.zones || [];
+    let list = s.tickets || s.zones || [];
+    if (seatedTiers) {
+      list = seatedTiers.map((ft) => {
+        const given = list.find((t) => String(t?.name ?? "").trim().toLowerCase() === ft.name.trim().toLowerCase());
+        if (!given) throw httpError(`Suất ${i + 1}: thiếu thông tin giá cho hạng vé "${ft.name}" (có trong file Excel)`, 400);
+        return { ...given, name: ft.name, totalQuantity: ft.quantity, zoneType: "SEATED" };
+      });
+    }
     if (!draft && !list.length) throw httpError(`Suất ${i + 1}: cần ít nhất 1 hạng vé`, 400);
     return list.map((t, j) => parseTier(t, sessionDefs[i].start_time, `Suất ${i + 1}, hạng vé ${j + 1}`));
   });
@@ -265,6 +279,19 @@ exports.create = ah(async (req, res) => {
     if (tiers.length) await TicketTier.insertMany(tiers);
     await recalcEvent(event._id);
 
+    // Tự vẽ sơ đồ từ hạng vé ngay lúc tạo (không cần lưu nháp rồi quay lại). Lỗi thì toàn bộ sự kiện bị rollback ở catch bên dưới.
+    // Nạp seatMapController tại đây (không ở đầu file) để tránh vòng phụ thuộc: seatMapController đã nạp file này.
+    const layoutMode = String(payload.seatLayout || "NONE").toUpperCase();
+    if (layoutMode === "GA_SVG" || layoutMode === "SEATED_FILE") {
+      // Vé đứng: chỉ SVG + danh sách gắn khu-hạng vé. Vé ngồi: SVG + Excel. File đi cùng request, lỗi thì rollback cả sự kiện.
+      await require("./seatMapController").applyUploadedLayout(req, event, {
+        mode: layoutMode,
+        svgBuffer: files.find((f) => f.fieldname === "svgFile")?.buffer,
+        excelBuffer: files.find((f) => f.fieldname === "excelFile")?.buffer,
+        zones: payload.seatZones,
+      });
+    }
+
     // Lưu thông tin thanh toán của Organizer nếu có gửi kèm
     if (payload.paymentInfo && req.user.id) {
       const { accountOwner, accountNumber, bankName, branch } = payload.paymentInfo;
@@ -301,6 +328,9 @@ exports.create = ah(async (req, res) => {
     console.error(`💥 [Tạo sự kiện THẤT BẠI]:`, err.message || err);
     if (created.event) {
       console.log(`🧹 [Rollback] Đang dọn dẹp eventId: ${created.event._id}`);
+      const { Seat, SeatmapLayout } = require("../models");
+      await Seat.deleteMany({ event_id: created.event._id });
+      await SeatmapLayout.deleteMany({ event_id: created.event._id });
       await TicketTier.deleteMany({ event_id: created.event._id });
       await EventSession.deleteMany({ event_id: created.event._id });
       await Event.deleteOne({ _id: created.event._id });
@@ -576,7 +606,7 @@ exports.updateTier = ah(async (req, res) => {
   set.sale_end_time = to;
 
   if (b.totalQuantity !== undefined) {
-    if (tier.zone_type === "SEATED") throw httpError("Hạng vé bán theo ghế: số lượng bằng số ghế, do Admin dựng sơ đồ (SVG + Excel) quyết định, không sửa tay được", 400);
+    if (tier.zone_type === "SEATED") throw httpError("Hạng vé bán theo ghế: số lượng bằng số ghế trên sơ đồ nên không sửa tay được, hãy dựng lại sơ đồ để đổi", 400);
     const n = intIn(b.totalQuantity, 1, 100000, "totalQuantity");
     // Nguyên tử: chỉ cho giảm tới mức đã bán + đang giữ chỗ
     const q = await TicketTier.findOneAndUpdate(
@@ -1202,4 +1232,4 @@ exports.listPayouts = ah(async (req, res) => {
   });
 });
 
-exports._helpers = { ownEvent, ownSession, ownTier, assertSelling, recalcEvent, tierToClient, usedOf, num, bool, COLOR, SELLING };
+exports._helpers = { parseTier, ownEvent, ownSession, ownTier, assertSelling, recalcEvent, tierToClient, usedOf, num, bool, COLOR, SELLING };

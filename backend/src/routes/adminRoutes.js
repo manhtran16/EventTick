@@ -18,11 +18,8 @@ router.get("/contracts", contractCtrl.adminListContracts);
 router.put("/contracts/:id/commission", contractCtrl.updateCommission);
 router.get("/contracts/:id/pdf", contractCtrl.adminContractPdf);
 
-// UC24: Admin dựng sơ đồ chỗ ngồi từ file SVG + Excel của Organizer
-router.get("/seatmap/template.xlsx", seatMapCtrl.templateXlsx);
-router.get("/seatmap/template.svg", seatMapCtrl.templateSvg);
+// UC24: Admin xem sơ đồ chỗ ngồi do Organizer tải lên khi tạo sự kiện
 router.get("/events/:id/seatmap", seatMapCtrl.adminGet);
-router.post("/events/:id/seatmap", seatMapCtrl.importUpload, seatMapCtrl.importSeatmap);
 
 // UC37: Quản lý người dùng, khóa tài khoản & phân quyền
 router.get("/users", adminCtrl.listUsers);

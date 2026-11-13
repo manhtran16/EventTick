@@ -8,7 +8,7 @@ const SHAPES = "path, polygon, rect, circle, ellipse, polyline";
 const money = (v) => `${Number(v || 0).toLocaleString("vi-VN")} đ`;
 
 /**
- * Sơ đồ chỗ ngồi 1 tầng: mặt bằng SVG (Admin dựng) + ghế vẽ ngay trên mặt bằng, bấm chọn trực tiếp.
+ * Sơ đồ chỗ ngồi 1 tầng: mặt bằng SVG (tự vẽ từ hạng vé hoặc từ file) + ghế vẽ ngay trên mặt bằng, bấm chọn trực tiếp.
  *  - Khu "SEC_*" tô màu theo hạng vé; khu hết vé mờ đi. Ghế đặt đúng hình khu (hàng thẳng hoặc cong quanh sân khấu).
  *  - Ghế: trắng = trống, xanh = đang chọn, đỏ = không chọn được.
  *  - Khu đứng (GA): bấm vào khu để chọn số lượng (onSelectSection).
