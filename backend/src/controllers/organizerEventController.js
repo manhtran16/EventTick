@@ -1110,10 +1110,6 @@ exports.exportOrders = ah(async (req, res) => {
     o.total_amount || 0,
     statusMap[o.status] || o.status,
     o.created_at ? new Date(o.created_at).toLocaleString("vi-VN") : "—",
-    o.vat_invoice_info?.company_name || "—",
-    o.vat_invoice_info?.tax_code || "—",
-    o.vat_invoice_info?.company_address || "—",
-    o.vat_invoice_info?.invoice_email || "—",
   ]);
 
   const wb = new ExcelJS.Workbook();
@@ -1133,10 +1129,6 @@ exports.exportOrders = ah(async (req, res) => {
     { header: "Th\u1EF1c thu (\u0111)", key: "total", width: 16 },
     { header: "Tr\u1EA1ng th\u00E1i", key: "status", width: 16 },
     { header: "Ng\u00E0y t\u1EA1o", key: "createdAt", width: 22 },
-    { header: "C\u00F4ng ty xu\u1EA5t VAT", key: "vatCompany", width: 30 },
-    { header: "MST VAT", key: "vatTax", width: 16 },
-    { header: "\u0110\u1ECBa ch\u1EC9 VAT", key: "vatAddress", width: 35 },
-    { header: "Email nh\u1EADn VAT", key: "vatEmail", width: 26 },
   ];
 
   const headerRow = ws.getRow(1);

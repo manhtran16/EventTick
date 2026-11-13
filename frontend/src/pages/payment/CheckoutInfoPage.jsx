@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { Calendar, MapPin, Clock, Loader2, ClipboardList, Receipt, UserCheck } from 'lucide-react';
+import { Calendar, MapPin, Clock, Loader2, ClipboardList, X } from 'lucide-react';
 import { api } from '../../api/client';
 import { useToast } from '../../context/ToastContext';
-import { useAuth } from '../../context/AuthContext';
 import { PATHS } from '../../routes/paths';
 import FormField, { firstMissingRequired } from '../../components/FormField';
+import { VIETNAMESE_BANKS } from '../../data/vietnameseBanks';
 
 const money = (n) => `${Number(n || 0).toLocaleString('vi-VN')} ₫`;
 const fmt = (sec) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
@@ -29,21 +29,15 @@ export default function CheckoutInfoPage() {
   const { orderId } = useParams();
   const navigate = useNavigate();
   const { showToast } = useToast();
-  const { user } = useAuth();
 
   const [data, setData] = useState(null);
   const [answers, setAnswers] = useState({});
+  const [refundBankInfo, setRefundBankInfo] = useState({ bankName: '', accountNo: '', accountHolder: '' });
   const [agree, setAgree] = useState(false);
-  const [requestVat, setRequestVat] = useState(false);
-  const [vatInfo, setVatInfo] = useState({
-    company_name: '',
-    tax_code: '',
-    company_address: '',
-    invoice_email: '',
-  });
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [cancelConfirm, setCancelConfirm] = useState(false);
   const [error, setError] = useState('');
   const [timeLeft, setTimeLeft] = useState(null);
 
@@ -64,17 +58,12 @@ export default function CheckoutInfoPage() {
         }
         setData(res);
         setAnswers(res.attendeeFormAnswers || {});
-        if (res.order?.vat_invoice_info?.company_name) {
-          setRequestVat(true);
-          setVatInfo({
-            company_name: res.order.vat_invoice_info.company_name || '',
-            tax_code: res.order.vat_invoice_info.tax_code || '',
-            company_address: res.order.vat_invoice_info.company_address || '',
-            invoice_email: res.order.vat_invoice_info.invoice_email || user?.email || '',
-          });
-        } else if (user?.email) {
-          setVatInfo((prev) => ({ ...prev, invoice_email: user.email }));
-        }
+        const savedBankInfo = res.refundBankInfo || res.order?.refund_bank_info || res.order?.refundBankInfo || {};
+        setRefundBankInfo({
+          bankName: savedBankInfo.bank_name || savedBankInfo.bankName || '',
+          accountNo: savedBankInfo.account_no || savedBankInfo.accountNo || '',
+          accountHolder: savedBankInfo.account_holder || savedBankInfo.accountHolder || '',
+        });
       })
       .catch((err) => {
         if (!alive) return;
@@ -85,7 +74,7 @@ export default function CheckoutInfoPage() {
     return () => {
       alive = false;
     };
-  }, [orderId, navigate, user?.email]);
+  }, [orderId, navigate]);
 
   const expiresAt = data?.order?.expiresAt || data?.order?.lock_expires_at;
   useEffect(() => {
@@ -106,32 +95,27 @@ export default function CheckoutInfoPage() {
       showToast(`Vui lòng trả lời: "${missing}"`);
       return;
     }
-
-    if (requestVat) {
-      if (!vatInfo.company_name.trim()) return showToast('Vui lòng nhập tên công ty/đơn vị nhận hóa đơn');
-      if (!vatInfo.tax_code.trim()) return showToast('Vui lòng nhập mã số thuế');
-      if (!/^\d{10}(-?\d{3})?$/.test(vatInfo.tax_code.trim())) return showToast('Mã số thuế phải gồm 10 hoặc 13 chữ số');
-      if (!vatInfo.company_address.trim()) return showToast('Vui lòng nhập địa chỉ công ty');
-      if (!vatInfo.invoice_email.trim()) return showToast('Vui lòng nhập email nhận hóa đơn');
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(vatInfo.invoice_email.trim())) return showToast('Email nhận hóa đơn không hợp lệ');
-    }
-
     if (!agree) {
       showToast('Vui lòng đồng ý với quy định của sự kiện');
+      return;
+    }
+    if (!refundBankInfo.bankName.trim()) {
+      showToast('Vui lòng nhập tên ngân hàng nhận tiền');
+      return;
+    }
+    if (!/^[0-9]{6,20}$/.test(refundBankInfo.accountNo.trim())) {
+      showToast('Số tài khoản phải gồm 6–20 chữ số');
+      return;
+    }
+    if (!refundBankInfo.accountHolder.trim()) {
+      showToast('Vui lòng nhập tên chủ tài khoản');
       return;
     }
     setSubmitting(true);
     try {
       await api.put(`/booking/orders/${orderId}/checkout-info`, {
         attendeeFormAnswers: answers,
-        vatInvoiceInfo: requestVat
-          ? {
-              company_name: vatInfo.company_name.trim(),
-              tax_code: vatInfo.tax_code.trim(),
-              company_address: vatInfo.company_address.trim(),
-              invoice_email: vatInfo.invoice_email.trim(),
-            }
-          : null,
+        refundBankInfo,
       });
       navigate(`/payment/${orderId}`);
     } catch (err) {
@@ -141,8 +125,10 @@ export default function CheckoutInfoPage() {
     }
   };
 
-  const cancelOrder = async () => {
-    if (!window.confirm('Huỷ đơn hàng này? Ghế / vé đã giữ sẽ được trả lại.')) return;
+  const cancelOrder = () => setCancelConfirm(true);
+
+  const confirmCancelOrder = async () => {
+    setCancelConfirm(false);
     setCancelling(true);
     try {
       await api.post(`/booking/orders/${orderId}/cancel`);
@@ -200,117 +186,57 @@ export default function CheckoutInfoPage() {
       )}
 
       <div className='grid gap-6 lg:grid-cols-[1fr_360px]'>
-        <form onSubmit={submit} className='bg-white border border-[#e4e4e7] rounded-2xl p-6 space-y-6'>
-          {/* Thông tin người nhận vé (UC21) */}
-          <div className='space-y-3'>
-            <h2 className='font-bold flex items-center gap-2 text-sm text-[#09090b]'>
-              <UserCheck size={16} /> Thông tin người nhận vé
-            </h2>
-            <div className='grid sm:grid-cols-3 gap-3 p-3.5 bg-[#f9f9fb] border border-[#e4e4e7] rounded-xl text-xs'>
-              <div>
-                <span className='text-[#71717a] block text-[11px]'>Họ và tên</span>
-                <span className='font-semibold text-[#09090b]'>{user?.fullName || user?.username || '—'}</span>
-              </div>
-              <div>
-                <span className='text-[#71717a] block text-[11px]'>Email nhận vé</span>
-                <span className='font-semibold text-[#09090b] truncate block'>{user?.email || '—'}</span>
-              </div>
-              <div>
-                <span className='text-[#71717a] block text-[11px]'>Số điện thoại</span>
-                <span className='font-semibold text-[#09090b]'>{user?.phone || '—'}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Câu hỏi khảo sát tùy chỉnh (UC20, UC21) */}
-          {schema.length > 0 && (
-            <div className='space-y-4 border-t border-[#f4f4f6] pt-5'>
-              <h2 className='font-bold flex items-center gap-2 text-sm text-[#09090b]'>
-                <ClipboardList size={16} /> Câu hỏi khảo sát của ban tổ chức
-              </h2>
-              {schema.map((f) => (
-                <div key={f.key}>
-                  <label htmlFor={`f-${f.key}`} className='block text-xs font-semibold uppercase tracking-wider text-[#52525b] mb-1.5'>
-                    {f.label} {f.required && <span className='text-red-600'>*</span>}
-                  </label>
-                  <FormField field={f} value={answers[f.key]} onChange={(v) => setAnswers((p) => ({ ...p, [f.key]: v }))} />
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Yêu cầu xuất hóa đơn đỏ - e-Invoice VAT (UC24) */}
-          <div className='border-t border-[#f4f4f6] pt-5 space-y-3.5'>
-            <label className='flex items-center gap-2.5 cursor-pointer select-none'>
-              <input
-                type='checkbox'
-                className='w-4 h-4 accent-[#09090b] rounded'
-                checked={requestVat}
-                onChange={(e) => setRequestVat(e.target.checked)}
-              />
-              <span className='font-bold text-sm text-[#09090b] flex items-center gap-1.5'>
-                <Receipt size={16} /> Yêu cầu xuất hóa đơn GTGT (e-Invoice VAT)
-              </span>
+        <form onSubmit={submit} className='bg-white border border-[#e4e4e7] rounded-2xl p-6 space-y-5'>
+          <h2 className='font-bold'>Vui lòng điền số tài khoản nhận tiền trong trường hợp sự kiện bị hủy</h2>
+          <p className='text-sm text-[#71717a]'>Thông tin này chỉ được sử dụng để hoàn tiền nếu sự kiện bị hủy.</p>
+          <div className='grid gap-3 sm:grid-cols-2'>
+            <label className='block sm:col-span-2'>
+              <span className='block text-xs font-semibold uppercase tracking-wider text-[#52525b] mb-1.5'>Ngân hàng <span className='text-red-600'>*</span></span>
+              <select
+                required
+                value={refundBankInfo.bankName}
+                onChange={(e) => setRefundBankInfo((p) => ({ ...p, bankName: e.target.value }))}
+                className='w-full border border-[#e4e4e7] rounded-lg px-3 py-2.5 text-sm'
+              >
+                <option value=''>Chọn ngân hàng</option>
+                {VIETNAMESE_BANKS.map((bank) => <option key={bank.code} value={bank.name}>{bank.name}</option>)}
+              </select>
             </label>
-
-            {requestVat && (
-              <div className='p-4 bg-[#f9f9fb] border border-[#e4e4e7] rounded-xl space-y-3 text-xs'>
-                <p className='text-[11px] text-[#71717a]'>
-                  Thông tin doanh nghiệp sẽ được lưu cùng đơn hàng và gửi cho ban tổ chức phát hành hóa đơn điện tử.
-                </p>
-                <div className='grid sm:grid-cols-2 gap-3'>
-                  <div>
-                    <label className='block font-semibold text-[#52525b] mb-1'>Tên công ty / Đơn vị *</label>
-                    <input
-                      type='text'
-                      required
-                      placeholder='VD: Công ty Cổ phần Giải pháp ABC'
-                      value={vatInfo.company_name}
-                      onChange={(e) => setVatInfo({ ...vatInfo, company_name: e.target.value })}
-                      className='w-full px-3 py-2 bg-white border border-[#e4e4e7] rounded-lg outline-none focus:border-[#09090b]'
-                    />
-                  </div>
-                  <div>
-                    <label className='block font-semibold text-[#52525b] mb-1'>Mã số thuế (MST) *</label>
-                    <input
-                      type='text'
-                      required
-                      placeholder='10 hoặc 13 chữ số'
-                      value={vatInfo.tax_code}
-                      onChange={(e) => setVatInfo({ ...vatInfo, tax_code: e.target.value })}
-                      className='w-full px-3 py-2 bg-white border border-[#e4e4e7] rounded-lg outline-none focus:border-[#09090b]'
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className='block font-semibold text-[#52525b] mb-1'>Địa chỉ công ty (theo ĐKKD) *</label>
-                  <input
-                    type='text'
-                    required
-                    placeholder='VD: Số 10 Phạm Văn Bạch, Cầu Giấy, Hà Nội'
-                    value={vatInfo.company_address}
-                    onChange={(e) => setVatInfo({ ...vatInfo, company_address: e.target.value })}
-                    className='w-full px-3 py-2 bg-white border border-[#e4e4e7] rounded-lg outline-none focus:border-[#09090b]'
-                  />
-                </div>
-                <div>
-                  <label className='block font-semibold text-[#52525b] mb-1'>Email nhận hóa đơn điện tử *</label>
-                  <input
-                    type='email'
-                    required
-                    placeholder='VD: ketoan@congty.com'
-                    value={vatInfo.invoice_email}
-                    onChange={(e) => setVatInfo({ ...vatInfo, invoice_email: e.target.value })}
-                    className='w-full px-3 py-2 bg-white border border-[#e4e4e7] rounded-lg outline-none focus:border-[#09090b]'
-                  />
-                </div>
-              </div>
-            )}
+            <label className='block'>
+              <span className='block text-xs font-semibold uppercase tracking-wider text-[#52525b] mb-1.5'>Số tài khoản <span className='text-red-600'>*</span></span>
+              <input
+                required
+                inputMode='numeric'
+                value={refundBankInfo.accountNo}
+                onChange={(e) => setRefundBankInfo((p) => ({ ...p, accountNo: e.target.value.replace(/\D/g, '') }))}
+                placeholder='6–20 chữ số'
+                className='w-full border border-[#e4e4e7] rounded-lg px-3 py-2.5 text-sm'
+              />
+            </label>
+            <label className='block'>
+              <span className='block text-xs font-semibold uppercase tracking-wider text-[#52525b] mb-1.5'>Tên chủ tài khoản <span className='text-red-600'>*</span></span>
+              <input
+                required
+                value={refundBankInfo.accountHolder}
+                onChange={(e) => setRefundBankInfo((p) => ({ ...p, accountHolder: e.target.value.toUpperCase() }))}
+                placeholder='NGUYEN VAN A'
+                className='w-full border border-[#e4e4e7] rounded-lg px-3 py-2.5 text-sm uppercase'
+              />
+            </label>
           </div>
+          {schema.length > 0 && <h2 className='font-bold pt-2'>Câu hỏi của ban tổ chức</h2>}
+          {schema.map((f) => (
+            <div key={f.key}>
+              <label htmlFor={`f-${f.key}`} className='block text-xs font-semibold uppercase tracking-wider text-[#52525b] mb-1.5'>
+                {f.label} {f.required && <span className='text-red-600'>*</span>}
+              </label>
+              <FormField field={f} value={answers[f.key]} onChange={(v) => setAnswers((p) => ({ ...p, [f.key]: v }))} />
+            </div>
+          ))}
 
-          <label className='flex items-start gap-2.5 text-sm text-[#52525b] cursor-pointer pt-2 border-t border-[#f4f4f6]'>
+          <label className='flex items-start gap-2.5 text-sm text-[#52525b] cursor-pointer'>
             <input type='checkbox' className='w-4 h-4 mt-0.5 accent-[#09090b]' checked={agree} onChange={(e) => setAgree(e.target.checked)} />
-            <span>Tôi đã kiểm tra thông tin và đồng ý với quy định của sự kiện. Vé đã mua không hoàn lại, chỉ có thể đăng bán lại.</span>
+            <span>Tôi đã kiểm tra thông tin và đồng ý với quy định của sự kiện.</span>
           </label>
 
           <div className='flex flex-wrap gap-3 pt-2'>
@@ -363,6 +289,21 @@ export default function CheckoutInfoPage() {
           </div>
         </aside>
       </div>
+      {cancelConfirm && (
+        <div className='fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4' onClick={() => setCancelConfirm(false)}>
+          <div className='relative bg-white rounded-2xl p-6 w-full max-w-md space-y-4 shadow-xl' onClick={(e) => e.stopPropagation()}>
+            <button type='button' onClick={() => setCancelConfirm(false)} className='absolute top-4 right-4 text-[#71717a] hover:text-[#09090b]' aria-label='Đóng'>
+              <X size={18} />
+            </button>
+            <h2 className='text-xl font-bold text-center'>Hủy đơn hàng?</h2>
+            <p className='text-sm text-center text-[#52525b]'>Ghế / vé đã giữ sẽ được trả lại. Bạn có chắc muốn hủy đơn hàng này không?</p>
+            <div className='flex gap-3'>
+              <button type='button' className='tb-btn w-full' onClick={() => setCancelConfirm(false)}>Không</button>
+              <button type='button' className='tb-btn tb-btn-solid w-full' onClick={confirmCancelOrder}>Hủy đơn hàng</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

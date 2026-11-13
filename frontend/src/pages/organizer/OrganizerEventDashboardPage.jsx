@@ -14,6 +14,7 @@ import {
   History,
   X,
   ClipboardList,
+  CheckCircle2,
 } from 'lucide-react';
 import { api } from '../../api/client';
 import { useToast } from '../../context/ToastContext';
@@ -69,41 +70,23 @@ function Stat({ label, value, sub }) {
   );
 }
 
-function AnswerButton({ title, answers, vatInvoice, onInspect }) {
+function AnswerButton({ title, answers, onInspect }) {
   const hasAnswers = answers && typeof answers === 'object' && Object.keys(answers).length > 0;
-  const hasVat = Boolean(vatInvoice?.company_name);
-
-  if (!hasAnswers && !hasVat) {
-    return <span className='text-[#a1a1aa] text-xs'>—</span>;
-  }
-
-  const count = hasAnswers ? Object.keys(answers).length : 0;
+  if (!hasAnswers) return <span className='text-[#a1a1aa] text-xs'>—</span>;
+  const count = Object.keys(answers).length;
 
   return (
-    <div className='flex items-center gap-1.5 flex-wrap'>
-      {hasAnswers && (
-        <button
-          type='button'
-          onClick={() => onInspect({ title, answers, vatInvoice })}
-          className='inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-[#e4e4e7] rounded-lg text-xs font-semibold text-[#09090b] hover:border-[#09090b] hover:bg-[#f9f9fb] transition-colors'>
-          <ClipboardList size={12} />
-          <span>Khảo sát ({count})</span>
-        </button>
-      )}
-      {hasVat && (
-        <button
-          type='button'
-          onClick={() => onInspect({ title, answers, vatInvoice })}
-          className='inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg text-[11px] font-semibold hover:bg-blue-100 transition-colors'>
-          <ReceiptText size={11} />
-          <span>VAT</span>
-        </button>
-      )}
-    </div>
+    <button
+      type='button'
+      onClick={() => onInspect({ title, answers })}
+      className='inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-[#e4e4e7] rounded-lg text-xs font-semibold text-[#09090b] hover:border-[#09090b] hover:bg-[#f9f9fb] transition-colors'>
+      <ClipboardList size={12} />
+      <span>Khảo sát ({count})</span>
+    </button>
   );
 }
 
-/** Quản lý một sự kiện: thống kê (UC31, UC32), đơn hàng + người tham dự (UC29), nhân viên (UC30), xuất CSV (UC33), đối soát (UC34). */
+/** Quản lý một sự kiện: thống kê (UC31, UC32), đơn hàng + người tham dự (UC29), nhân viên (UC30), xuất Excel (UC33), đối soát (UC34). */
 export default function OrganizerEventDashboardPage() {
   const { id } = useParams();
   const { showToast } = useToast();
@@ -114,6 +97,8 @@ export default function OrganizerEventDashboardPage() {
   const [staffForm, setStaffForm] = useState({ email: '', assignedGate: 'Cổng chính' });
   const [busy, setBusy] = useState(false);
   const [inspectItem, setInspectItem] = useState(null);
+  const [payoutConfirm, setPayoutConfirm] = useState(false);
+  const [payoutSuccess, setPayoutSuccess] = useState(null);
 
   const load = useCallback(
     async (which) => {
@@ -178,12 +163,17 @@ export default function OrganizerEventDashboardPage() {
     }
   };
 
-  const requestPayout = async () => {
-    if (!window.confirm('Gửi yêu cầu đối soát và rút tiền cho sự kiện này?')) return;
+  const requestPayout = () => setPayoutConfirm(true);
+
+  const submitPayout = async () => {
+    setPayoutConfirm(false);
     setBusy(true);
     try {
       const r = await api.post(`/organizer/events/${id}/payout/request`, {});
-      showToast(r.message || 'Đã gửi yêu cầu đối soát');
+      setPayoutSuccess({
+        message: r.message || 'Đã gửi yêu cầu đối soát và rút tiền thành công!',
+        amount: ps?.netPayoutAmount,
+      });
       load('payout');
     } catch (err) {
       showToast(err.message || 'Không gửi được yêu cầu');
@@ -329,7 +319,6 @@ export default function OrganizerEventDashboardPage() {
                       <AnswerButton
                         title={`Đơn hàng ${o.orderCode} · ${o.buyer?.name || ''}`}
                         answers={o.attendeeFormAnswers}
-                        vatInvoice={o.vatInvoiceInfo}
                         onInspect={setInspectItem}
                       />
                     </td>
@@ -380,7 +369,6 @@ export default function OrganizerEventDashboardPage() {
                       <AnswerButton
                         title={`Vé ${a.ticketCode} · ${a.owner?.name || ''}`}
                         answers={a.attendeeFormAnswers}
-                        vatInvoice={a.vatInvoiceInfo}
                         onInspect={setInspectItem}
                       />
                     </td>
@@ -520,7 +508,7 @@ export default function OrganizerEventDashboardPage() {
         </div>
       )}
 
-      {/* Modal xem câu trả lời form & VAT (UC26) */}
+      {/* Modal xem câu trả lời khảo sát (UC26) */}
       {inspectItem && (
         <div
           className='fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50'
@@ -564,33 +552,6 @@ export default function OrganizerEventDashboardPage() {
               )}
             </div>
 
-            {/* Hóa đơn VAT nếu có */}
-            {inspectItem.vatInvoice?.company_name && (
-              <div className='space-y-3 border-t border-[#f4f4f6] pt-4'>
-                <h4 className='text-xs font-bold uppercase tracking-wider text-blue-700 flex items-center gap-1.5'>
-                  <ReceiptText size={14} /> Yêu cầu xuất hóa đơn GTGT (VAT)
-                </h4>
-                <div className='p-4 bg-blue-50/60 border border-blue-200 rounded-2xl space-y-2.5 text-xs'>
-                  <div>
-                    <span className='text-[#71717a] block text-[11px] font-medium'>Tên công ty / Đơn vị:</span>
-                    <span className='font-bold text-[#09090b]'>{inspectItem.vatInvoice.company_name}</span>
-                  </div>
-                  <div>
-                    <span className='text-[#71717a] block text-[11px] font-medium'>Mã số thuế (MST):</span>
-                    <span className='font-mono font-bold text-[#09090b]'>{inspectItem.vatInvoice.tax_code}</span>
-                  </div>
-                  <div>
-                    <span className='text-[#71717a] block text-[11px] font-medium'>Địa chỉ công ty:</span>
-                    <span className='text-[#09090b]'>{inspectItem.vatInvoice.company_address || '—'}</span>
-                  </div>
-                  <div>
-                    <span className='text-[#71717a] block text-[11px] font-medium'>Email nhận hóa đơn:</span>
-                    <span className='text-[#09090b] font-semibold'>{inspectItem.vatInvoice.invoice_email || '—'}</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
             <div className='pt-2 flex justify-end'>
               <button
                 type='button'
@@ -599,6 +560,39 @@ export default function OrganizerEventDashboardPage() {
                 Đóng
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {payoutConfirm && (
+        <div className='fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4' onClick={() => setPayoutConfirm(false)}>
+          <div className='relative bg-white rounded-2xl p-6 w-full max-w-md space-y-4 shadow-xl' onClick={(e) => e.stopPropagation()}>
+            <button type='button' onClick={() => setPayoutConfirm(false)} className='absolute top-4 right-4 text-[#71717a] hover:text-[#09090b]' aria-label='Đóng'>
+              <X size={18} />
+            </button>
+            <Wallet size={40} className='mx-auto text-[#09090b]' />
+            <h2 className='text-xl font-bold text-center'>Xác nhận yêu cầu đối soát</h2>
+            <p className='text-sm text-center text-[#52525b]'>Bạn có chắc muốn gửi yêu cầu đối soát và rút tiền cho sự kiện này?</p>
+            <div className='flex gap-3'>
+              <button type='button' className='tb-btn w-full' onClick={() => setPayoutConfirm(false)}>Hủy</button>
+              <button type='button' className='tb-btn tb-btn-solid w-full' onClick={submitPayout}>Xác nhận gửi</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {payoutSuccess && (
+        <div className='fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4' onClick={() => setPayoutSuccess(null)}>
+          <div className='relative bg-white rounded-2xl p-6 w-full max-w-md text-center space-y-4 shadow-xl' onClick={(e) => e.stopPropagation()}>
+            <button type='button' onClick={() => setPayoutSuccess(null)} className='absolute top-4 right-4 text-[#71717a] hover:text-[#09090b]' aria-label='Đóng'>
+              <X size={18} />
+            </button>
+            <CheckCircle2 size={48} className='mx-auto text-emerald-600' />
+            <h2 className='text-xl font-bold'>Đã gửi yêu cầu đối soát</h2>
+            <p className='text-sm text-[#52525b]'>{payoutSuccess.message}</p>
+            <p className='text-lg font-extrabold'>{money(payoutSuccess.amount)}</p>
+            <p className='text-xs text-[#71717a]'>Admin sẽ kiểm tra và chuyển khoản vào tài khoản ngân hàng trong hồ sơ KYC của bạn.</p>
+            <button type='button' className='tb-btn tb-btn-solid w-full' onClick={() => setPayoutSuccess(null)}>Đã hiểu</button>
           </div>
         </div>
       )}
