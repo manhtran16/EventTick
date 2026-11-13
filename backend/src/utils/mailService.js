@@ -173,7 +173,7 @@ async function sendEventCancellationRefundEmail(toEmail, { buyerName, eventTitle
           <li><strong>Số tiền hoàn trả:</strong> ${formattedAmount}</li>
           <li><strong>Lý do:</strong> ${reason}</li>
         </ul>
-        <p>Yêu cầu hoàn tiền hàng loạt cho đơn hàng của bạn đã được xử lý trên hệ thống EventTick.</p>
+        <p>Yêu cầu hoàn tiền cho đơn hàng của bạn đang được xử lý trên hệ thống EventTick. Nếu không nhận được tiền trong vòng 2-3 ngày làm việc, vui lòng liên hệ với chúng tôi thông qua số điện thoại sau: 039.878.0271</p>
       </div>
     `,
   };

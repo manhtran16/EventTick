@@ -3,7 +3,7 @@ const { Schema } = mongoose;
 const { ref, options } = require("./_helpers");
 
 /**
- * Sơ đồ tĩnh của 1 sự kiện (do Admin dựng từ file SVG + Excel của Organizer).
+ * Sơ đồ tĩnh của 1 sự kiện (tự vẽ từ hạng vé, hoặc dựng từ file SVG + Excel do Organizer / Admin tải lên).
  * Ghế cụ thể của từng suất nằm ở bảng seats (section_name = section_id); hạng vé ở ticket_tiers.
  */
 const RowSchema = new Schema(

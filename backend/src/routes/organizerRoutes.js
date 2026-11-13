@@ -22,11 +22,12 @@ router.post("/events/:id/submit", ev.submit);
 router.post("/events/:id/withdraw", ev.withdraw);
 router.post("/events/:id/cancel", ev.cancel);
 
-// UC24: Organizer tự dựng sơ đồ chỗ ngồi / chỗ đứng từ SVG + Excel (không cần Admin)
+// UC24: file mẫu SVG / Excel và xem sơ đồ đã lưu (sơ đồ được tải lên cùng lúc tạo sự kiện, POST /events)
 router.get("/seatmap/template.xlsx", seatMapCtrl.templateXlsx);
 router.get("/seatmap/template.svg", seatMapCtrl.templateSvg);
 router.get("/events/:id/seatmap", seatMapCtrl.adminGet);
-router.post("/events/:id/seatmap", seatMapCtrl.importUpload, seatMapCtrl.organizerImportSeatmap);
+router.post("/seatmap/parse", upload.any(), seatMapCtrl.parseSeated); // đọc SVG + Excel, trả hạng vé và bản xem trước (không ghi DB)
+router.put("/events/:id/seatmap", upload.any(), seatMapCtrl.replaceLayout); // thay sơ đồ khi còn là bản nháp
 
 // UC26: Biểu mẫu thông tin người tham dự (Custom Checkout Form)
 router.put("/events/:id/custom-form", ev.updateCustomForm);

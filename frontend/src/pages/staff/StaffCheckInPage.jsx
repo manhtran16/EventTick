@@ -126,7 +126,9 @@ export default function StaffCheckInPage() {
       setBusy(true);
 
       // QR của hệ thống: "<mã vé>.<chữ ký>"
-      const [code, hash] = text.includes('.') ? text.split('.') : [text, ''];
+      const isJson = text.startsWith('{');
+      const [rawCode, hash] = !isJson && text.includes('.') ? text.split('.') : [text, ''];
+      const code = isJson ? rawCode : rawCode.replace(/^[#\s]+/, '').trim().toUpperCase();
       try {
         const res = await api.post('/booking/check-in', {
           ticketCode: code,

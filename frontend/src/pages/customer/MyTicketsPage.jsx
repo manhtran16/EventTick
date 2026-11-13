@@ -123,8 +123,8 @@ export default function MyTicketsPage() {
   const handleCancelResale = async (listingId) => {
     if (!window.confirm('Bạn có chắc muốn hủy tin bán lại và lấy lại vé?')) return;
     try {
-      await api.delete(`/resale/listings/${listingId}`);
-      showToast('Đã hủy tin bán lại vé');
+      const res = await api.delete(`/resale/listings/${listingId}`);
+      showToast(res.message || (res.cancelRequested ? 'Yêu cầu hủy đã được ghi nhận' : 'Đã hủy tin bán lại vé'));
       fetchTickets();
     } catch (err) {
       showToast(err.message || 'Không thể hủy tin bán lại');
@@ -281,12 +281,18 @@ export default function MyTicketsPage() {
                   )}
 
                   {t.rawStatus === 'LISTED_RESALE' && t.resale?.listingId && (
-                    <button
-                      type='button'
-                      onClick={() => handleCancelResale(t.resale.listingId)}
-                      className='text-xs font-semibold text-[#09090b] underline hover:opacity-75 transition-opacity'>
-                      Hủy bán lại
-                    </button>
+                    t.resale?.cancelRequested ? (
+                      <span className='text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full'>
+                        Đang chờ hủy (có người thanh toán)
+                      </span>
+                    ) : (
+                      <button
+                        type='button'
+                        onClick={() => handleCancelResale(t.resale.listingId)}
+                        className='text-xs font-semibold text-[#09090b] underline hover:opacity-75 transition-opacity'>
+                        Hủy bán lại
+                      </button>
+                    )
                   )}
                 </div>
               </div>

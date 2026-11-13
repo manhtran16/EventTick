@@ -1,10 +1,63 @@
-const { Order, Payment, Event } = require("../models");
+const { Order, Payment, Event, RefundRequest, Ticket } = require("../models");
 const bookingService = require("../services/bookingService");
 const sepay = require("../services/sepayService");
 const { audit } = require("../utils/audit");
 const { ah, httpError } = require("../utils/http");
 
 const ORPHAN_ACTION = "PAYMENT_UNMATCHED";
+
+function extractRefundId(body) {
+  const text = [body.code, body.content, body.description].filter(Boolean).join(" ");
+  const match = text.toUpperCase().match(/REFUND[-\s]?([A-F0-9]{24})/);
+  return match ? match[1] : null;
+}
+
+async function processOutgoingRefund(req, body, txId, amount) {
+  const refundId = extractRefundId(body);
+  const transferRef = `SEPAY-OUT-${txId}`;
+  if (!refundId) {
+    await recordUnmatched(req, "Giao dịch tiền ra không có mã hoàn tiền hợp lệ", body, { transferRef });
+    return { success: true, message: "Không có mã hoàn tiền hợp lệ" };
+  }
+
+  const refund = await RefundRequest.findOneAndUpdate(
+    { _id: refundId, status: "PROCESSING", refund_amount: amount },
+    {
+      $set: {
+        status: "COMPLETED",
+        transfer_reference: transferRef,
+        processed_at: new Date(),
+        processing_note: "Tự động xác nhận từ webhook SePay",
+      },
+    },
+    { new: true },
+  );
+
+  if (!refund) {
+    const alreadyProcessed = await RefundRequest.exists({ _id: refundId, transfer_reference: transferRef });
+    if (alreadyProcessed) return { success: true, message: "Khoản hoàn tiền đã được xác nhận trước đó" };
+    const expected = await RefundRequest.findById(refundId).select("refund_amount").lean();
+    await recordUnmatched(req, "Không khớp yêu cầu hoàn tiền hoặc số tiền", body, { refundId, transferRef, expectedAmount: expected?.refund_amount });
+    return { success: true, message: "Không khớp yêu cầu hoàn tiền" };
+  }
+
+  const remainingTickets = await Ticket.exists({
+    order_id: refund.order_id,
+    status: { $in: ["VALID", "USED", "LISTED_RESALE"] },
+  });
+  if (!remainingTickets) {
+    await Payment.updateOne(
+      { order_id: refund.order_id, status: "SUCCESS" },
+      { $set: { status: "REFUNDED" } },
+    );
+  }
+  await audit(req, "REFUND_WEBHOOK_COMPLETED", "refund_requests", refund._id, {
+    transferRef,
+    amount,
+    sepayId: txId,
+  });
+  return { success: true, message: "Đã tự động xác nhận hoàn tiền" };
+}
 
 /** Ghi lại giao dịch tiền vào KHÔNG gắn được với đơn nào (để Admin đối soát / hoàn tiền thủ công). */
 async function recordUnmatched(req, reason, body, extra = {}) {
@@ -37,15 +90,20 @@ exports.sepayWebhook = async (req, res) => {
   const body = req.body || {};
   const txId = body.id != null ? String(body.id) : null;
   if (!txId) return res.status(400).json({ success: false, message: "Thiếu id giao dịch" });
-  if (String(body.transferType).toLowerCase() !== "in") {
-    return res.json({ success: true, message: "Bỏ qua giao dịch tiền ra" });
-  }
+  const transferType = String(body.transferType || "").toLowerCase();
   const paid = Number(body.transferAmount);
   if (!Number.isFinite(paid) || paid <= 0) {
     return res.status(400).json({ success: false, message: "transferAmount không hợp lệ" });
   }
 
   try {
+    if (transferType === "out") {
+      return res.json(await processOutgoingRefund(req, body, txId, paid));
+    }
+    if (transferType !== "in") {
+      return res.json({ success: true, message: "Bỏ qua loại giao dịch không hỗ trợ" });
+    }
+
     // Chống xử lý trùng (SePay có thể gọi lại): transaction_ref = SEPAY-<id>
     const txRef = `SEPAY-${txId}`;
     if (await Payment.exists({ transaction_ref: txRef })) {
