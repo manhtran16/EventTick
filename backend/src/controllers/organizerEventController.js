@@ -1201,9 +1201,13 @@ exports.getPayoutSummary = ah(async (req, res) => {
   const platformCommissionAmt = Math.round((grossRevenue * commissionRatePct) / 100);
   const netPayoutAmount = Math.max(0, grossRevenue - platformCommissionAmt);
 
+  const isEnded = e.status === "ENDED" || (e.end_time && new Date(e.end_time) <= new Date());
+
   const payoutData = {
     eventId: e._id,
     title: e.title,
+    isEnded,
+    canRequestPayout: isEnded && e.status !== "CANCELLED" && (!existingSettlement || existingSettlement.status === "REJECTED"),
     grossRevenue,
     commissionRatePct,
     platformCommissionAmt,
@@ -1230,6 +1234,16 @@ exports.getPayoutSummary = ah(async (req, res) => {
 // POST /v1/organizer/events/:id/payout/request
 exports.requestPayout = ah(async (req, res) => {
   const e = await ownEvent(req, req.params.id);
+
+  if (e.status === "CANCELLED") {
+    throw httpError("Sự kiện đã bị huỷ, không thể kết toán", 400);
+  }
+
+  const now = new Date();
+  const isEnded = e.status === "ENDED" || (e.end_time && new Date(e.end_time) <= now);
+  if (!isEnded) {
+    throw httpError("Sự kiện chưa kết thúc, không thể kết toán", 400);
+  }
 
   const existingSettlement = await PayoutSettlement.findOne({ event_id: e._id });
   // Yêu cầu bị Admin từ chối thì được gửi lại (cập nhật bản ghi cũ vì mỗi sự kiện chỉ có một yêu cầu)
