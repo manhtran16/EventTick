@@ -6,7 +6,6 @@ const seatMap = require('../controllers/seatMapController');
 // LƯU Ý: Các route cố định phải đặt TRƯỚC route động "/:id"
 router.get('/in-banner', ctrl.inBanner);
 router.get('/trending', ctrl.trending);
-router.get('/in-special', ctrl.special);
 router.get('/recommend', ctrl.recommend);
 router.get('/latest/week', ctrl.latest);
 router.get('/latest/month', ctrl.latest);

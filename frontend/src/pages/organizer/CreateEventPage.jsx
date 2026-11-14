@@ -66,6 +66,11 @@ export default function CreateEventPage() {
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState('DRAFT');
   const [info, setInfo] = useState({ title: '', category: '', venueName: '', city: '', description: '', organizerInfo: '', allowResale: false, maxResaleMarkupPct: 10 });
+  // Địa điểm: tỉnh/thành + phường/xã lấy từ API, số nhà/đường tự nhập
+  const [provinces, setProvinces] = useState([]);
+  const [wards, setWards] = useState([]);
+  const [provinceCode, setProvinceCode] = useState('');
+  const [wardCode, setWardCode] = useState('');
   const [banner, setBanner] = useState(null);
   const [legalDoc, setLegalDoc] = useState(null);
   const [hasLegalDoc, setHasLegalDoc] = useState(false);
@@ -100,6 +105,44 @@ export default function CreateEventPage() {
       })
       .catch(() => {});
   }, [editing]);
+
+  useEffect(() => {
+    fetch('https://provinces.open-api.vn/api/v2/p/')
+      .then((r) => r.json())
+      .then((list) => setProvinces(Array.isArray(list) ? list : []))
+      .catch(() => showToast('Không tải được danh sách tỉnh/thành'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Khi sửa: chọn sẵn tỉnh theo tên đã lưu
+  useEffect(() => {
+    if (!editing || provinceCode || !info.city || !provinces.length) return;
+    const p = provinces.find((x) => x.name === info.city);
+    if (p) setProvinceCode(String(p.code));
+  }, [editing, provinces, info.city, provinceCode]);
+
+  useEffect(() => {
+    setWardCode('');
+    if (!provinceCode) return setWards([]);
+    fetch(`https://provinces.open-api.vn/api/v2/p/${provinceCode}?depth=2`)
+      .then((r) => r.json())
+      .then((p) => setWards(p.wards || []))
+      .catch(() => showToast('Không tải được danh sách phường/xã'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provinceCode]);
+
+  const onProvince = (e) => {
+    const code = e.target.value;
+    setProvinceCode(code);
+    const p = provinces.find((x) => String(x.code) === code);
+    setInfo((prev) => ({ ...prev, city: p ? p.name : '' }));
+  };
+
+  // Chuỗi địa điểm lưu vào venueName: "số nhà, đường, phường/xã"
+  const buildVenue = () => {
+    const w = wards.find((x) => String(x.code) === wardCode);
+    return [info.venueName.trim(), w?.name].filter(Boolean).join(', ');
+  };
 
   useEffect(() => {
     if (!editing) return;
@@ -345,8 +388,9 @@ export default function CreateEventPage() {
   const validate = (s, forSubmit) => {
     if (s === 'info' && structural) {
       if (!info.title.trim()) return 'Vui lòng nhập tên sự kiện';
-      if (!info.venueName.trim()) return 'Vui lòng nhập địa điểm';
-      if (!info.city.trim()) return 'Vui lòng nhập thành phố';
+      if (!info.city.trim()) return 'Vui lòng chọn tỉnh/thành phố';
+      if (!editing && !wardCode) return 'Vui lòng chọn phường/xã';
+      if (!info.venueName.trim()) return 'Vui lòng nhập số nhà, tên đường';
       if (!editing && !banner) return 'Vui lòng chọn ảnh bìa sự kiện';
       if (forSubmit && !legalDoc && !hasLegalDoc) return 'Vui lòng tải lên giấy phép tổ chức sự kiện trước khi gửi duyệt';
     }
@@ -406,7 +450,7 @@ export default function CreateEventPage() {
         if (structural) {
           Object.assign(body, {
             title: info.title.trim(),
-            venueName: info.venueName.trim(),
+            venueName: buildVenue(),
             city: info.city.trim(),
             allowResale: info.allowResale,
             maxResaleMarkupPct: Number(info.maxResaleMarkupPct),
@@ -431,7 +475,7 @@ export default function CreateEventPage() {
         const payload = {
           title: info.title.trim(),
           category: info.category,
-          venueName: info.venueName.trim(),
+          venueName: buildVenue(),
           city: info.city.trim(),
           description: info.description,
           organizerInfo: info.organizerInfo,
@@ -543,25 +587,43 @@ export default function CreateEventPage() {
               <label htmlFor='e-title' className={label}>Tên sự kiện</label>
               <input id='e-title' disabled={!structural} className={inputCls} value={info.title} onChange={setI('title')} maxLength={255} />
             </div>
+            <div>
+              <label htmlFor='e-cat' className={label}>Danh mục</label>
+              <select id='e-cat' disabled={!structural} className={inputCls} value={info.category} onChange={setI('category')}>
+                {editing && <option value=''>(giữ nguyên)</option>}
+                {categories.map((c) => (
+                  <option key={c._id || c.id} value={c.name}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div className='grid gap-4 sm:grid-cols-3'>
               <div>
-                <label htmlFor='e-cat' className={label}>Danh mục</label>
-                <select id='e-cat' disabled={!structural} className={inputCls} value={info.category} onChange={setI('category')}>
-                  {editing && <option value=''>(giữ nguyên)</option>}
-                  {categories.map((c) => (
-                    <option key={c._id || c.id} value={c.name}>
-                      {c.name}
+                <label htmlFor='e-city' className={label}>Tỉnh/Thành phố</label>
+                <select id='e-city' disabled={!structural} className={inputCls} value={provinceCode} onChange={onProvince}>
+                  <option value=''>{editing && info.city && !provinceCode ? info.city : '-- Chọn tỉnh/thành --'}</option>
+                  {provinces.map((p) => (
+                    <option key={p.code} value={p.code}>
+                      {p.name}
                     </option>
                   ))}
                 </select>
               </div>
               <div>
-                <label htmlFor='e-venue' className={label}>Địa điểm</label>
-                <input id='e-venue' disabled={!structural} className={inputCls} value={info.venueName} onChange={setI('venueName')} />
+                <label htmlFor='e-ward' className={label}>Phường/Xã</label>
+                <select id='e-ward' disabled={!structural || !provinceCode} className={inputCls} value={wardCode} onChange={(e) => setWardCode(e.target.value)}>
+                  <option value=''>{editing ? '(giữ nguyên)' : '-- Chọn phường/xã --'}</option>
+                  {wards.map((w) => (
+                    <option key={w.code} value={w.code}>
+                      {w.name}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
-                <label htmlFor='e-city' className={label}>Thành phố</label>
-                <input id='e-city' disabled={!structural} className={inputCls} value={info.city} onChange={setI('city')} />
+                <label htmlFor='e-venue' className={label}>Số nhà, đường</label>
+                <input id='e-venue' disabled={!structural} className={inputCls} value={info.venueName} onChange={setI('venueName')} maxLength={200} placeholder='VD: 12 Nguyễn Huệ' />
               </div>
             </div>
             <div>
@@ -894,7 +956,7 @@ export default function CreateEventPage() {
             <div className='grid gap-3 sm:grid-cols-2'>
               {[
                 ['Tên sự kiện', info.title],
-                ['Địa điểm', `${info.venueName}, ${info.city}`],
+                ['Địa điểm', `${buildVenue()}, ${info.city}`],
                 ['Số suất diễn', sessions.length],
                 ['Số hạng vé', sessions.reduce((n, s) => n + s.tiers.length, 0)],
                 ['Số câu hỏi', questions.length],

@@ -41,22 +41,29 @@ exports.getById = async (req, res) => {
 
 // GET /events/in-banner
 exports.inBanner = async (req, res) => {
-  let events = await Event.find({ status: PUBLIC_STATUS, is_featured_banner: true }).limit(5);
+  const notEnded = { status: PUBLIC_STATUS, end_time: { $gt: new Date() } };
+  let events = await Event.find({ ...notEnded, is_featured_banner: true }).sort({ start_time: 1 }).limit(5);
   if (events.length === 0) {
-    events = await Event.find({ status: PUBLIC_STATUS }).sort({ created_at: -1 }).limit(5);
+    events = await Event.find(notEnded).sort({ created_at: -1 }).limit(5);
   }
   res.json({ events: await withTiers(events) });
 };
 
-// GET /events/trending
+// GET /events/trending — top 10 sự kiện chưa kết thúc có nhiều vé bán ra nhất (không tính vé đã hoàn / vô hiệu do bán lại)
 exports.trending = async (req, res) => {
-  const events = await Event.find({ is_trending: true, status: PUBLIC_STATUS }).limit(10);
-  res.json({ success: true, events: await withTiers(events) });
-};
-
-// GET /events/in-special
-exports.special = async (req, res) => {
-  const events = await Event.find({ is_special: true, status: PUBLIC_STATUS }).limit(10);
+  const top = await Ticket.aggregate([
+    { $match: { status: { $in: ['VALID', 'USED', 'LISTED_RESALE'] } } },
+    { $group: { _id: '$event_id', sold: { $sum: 1 } } },
+    { $lookup: { from: 'events', localField: '_id', foreignField: '_id', as: 'event' } },
+    { $unwind: '$event' },
+    { $match: { 'event.status': PUBLIC_STATUS, 'event.end_time': { $gt: new Date() } } },
+    { $sort: { sold: -1 } },
+    { $limit: 10 },
+  ]);
+  const ids = top.map((t) => t._id);
+  const docs = await Event.find({ _id: { $in: ids } });
+  const byId = new Map(docs.map((d) => [String(d._id), d]));
+  const events = ids.map((i) => byId.get(String(i))).filter(Boolean); // giữ thứ tự xếp hạng
   res.json({ success: true, events: await withTiers(events) });
 };
 

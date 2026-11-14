@@ -15,7 +15,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Flame,
-  Star,
   ArrowRight,
   Palette,
   Award,
@@ -37,7 +36,7 @@ export default function HomePage() {
   const [heroIndex, setHeroIndex] = useState(0);
   const [isHeroHovered, setIsHeroHovered] = useState(false);
 
-  const [data, setData] = useState({ hero: [], trending: [], special: [], week: [], month: [], all: [] });
+  const [data, setData] = useState({ hero: [], trending: [], week: [], month: [], all: [] });
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
 
@@ -57,7 +56,6 @@ export default function HomePage() {
 
   const heroBanners = data.hero.length ? data.hero : data.all.slice(0, 4);
   const trendingList = data.trending.length ? data.trending.map((e, i) => ({ ...e, rank: i + 1 })) : data.all.slice(0, 10).map((e, i) => ({ ...e, rank: i + 1 }));
-  const specialList = data.special.length ? data.special : data.all.slice(0, 4);
   const timeList = timeTab === 'weekend' ? data.week : data.month;
   const musicList = data.all.filter((e) => e.category === 'music').slice(0, 4);
   const stageList = data.all.filter((e) => e.category !== 'music').slice(0, 4);
@@ -359,30 +357,6 @@ export default function HomePage() {
           <div className='events-grid'>
             {timeList.map((event) => renderCard(event))}
           </div>
-        </div>
-      </section>
-
-      {/* DUY NHẤT TRÊN EventTick */}
-      <section className='section-wrap' id='special'>
-        <div className='tb-container'>
-          <div className='section-header'>
-            <div className='section-title-wrap'>
-              <h2 className='section-title'>
-                <Star size={20} />
-                <span>Duy nhất trên EventTick</span>
-              </h2>
-              <p className='section-subtitle'>Đặc quyền đặt chỗ sớm và ưu đãi độc quyền từ ban tổ chức</p>
-            </div>
-            <button
-              type='button'
-              className='section-more-link'
-              onClick={() => navigate(PATHS.SEARCH)}>
-              <span>Xem tất cả</span>
-              <ArrowRight size={14} />
-            </button>
-          </div>
-
-          <div className='events-grid'>{specialList.map((event) => renderCard(event))}</div>
         </div>
       </section>
 

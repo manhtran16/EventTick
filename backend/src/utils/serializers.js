@@ -1,8 +1,4 @@
-/**
- * Chuyển document theo schema mới (snake_case) sang định dạng front-end đang đọc
- * (eventName, sessions[].tickets[], ...).
- * Cấu trúc: events (1) -> (N) event_sessions (1) -> (N) ticket_tiers.
- */
+
 
 function tierToClient(t) {
   const left = t.available_quantity;
@@ -70,8 +66,6 @@ function eventToClient(eventDoc, sessions = [], tiers = []) {
     lowestPrice: e.lowest_price ?? 0,
     earliestDate: e.start_time,
     lastDate: e.end_time,
-    isTrending: e.is_trending,
-    isSpecial: e.is_special,
     rejectionReason: e.rejection_reason,
     createdAt: e.created_at,
     sessions: sessionList,

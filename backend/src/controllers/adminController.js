@@ -207,16 +207,12 @@ exports.setEventFeatured = ah(async (req, res) => {
   const e = await Event.findById(validId(req.params.id, "ID sự kiện"));
   if (!e) throw httpError("Không tìm thấy sự kiện", 404);
 
-  const { isFeaturedBanner, isTrending, isSpecial } = req.body;
+  const { isFeaturedBanner } = req.body;
   if (isFeaturedBanner !== undefined) e.is_featured_banner = Boolean(isFeaturedBanner);
-  if (isTrending !== undefined) e.is_trending = Boolean(isTrending);
-  if (isSpecial !== undefined) e.is_special = Boolean(isSpecial);
 
   await e.save();
   await audit(req, "EVENT_FEATURED_UPDATE", "events", e._id, {
     isFeaturedBanner: e.is_featured_banner,
-    isTrending: e.is_trending,
-    isSpecial: e.is_special,
   });
 
   res.json({
@@ -226,8 +222,6 @@ exports.setEventFeatured = ah(async (req, res) => {
       id: e._id,
       title: e.title,
       isFeaturedBanner: e.is_featured_banner,
-      isTrending: e.is_trending,
-      isSpecial: e.is_special,
     },
   });
 });

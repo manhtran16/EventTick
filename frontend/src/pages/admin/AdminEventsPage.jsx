@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Loader2, FileText, Check, X, Calendar, MapPin, Star, Flame, Sparkles, Ban, Eye, ExternalLink } from 'lucide-react';
+import { Loader2, FileText, Check, X, Calendar, MapPin, Star, Ban, Eye, ExternalLink } from 'lucide-react';
 import { api } from '../../api/client';
 import { useToast } from '../../context/ToastContext';
 import { inputCls } from '../../components/FormField';
@@ -325,18 +325,18 @@ export default function AdminEventsPage() {
                   )}
                   {tab === 'PUBLISHED' && (
                     <>
-                      <button type='button' className='tb-btn tb-btn-outline tb-btn-sm' onClick={() => feature(e, { isFeaturedBanner: true })} title='Đưa lên banner trang chủ'>
-                        <Star size={13} /> Banner
-                      </button>
-                      <button type='button' className='tb-btn tb-btn-outline tb-btn-sm' onClick={() => feature(e, { isTrending: true })}>
-                        <Flame size={13} /> Xu hướng
-                      </button>
-                      <button type='button' className='tb-btn tb-btn-outline tb-btn-sm' onClick={() => feature(e, { isSpecial: true })}>
-                        <Sparkles size={13} /> Duy nhất
+                      <button
+                        type='button'
+                        className={`tb-btn tb-btn-sm ${e.isFeaturedBanner ? '' : 'tb-btn-outline'}`}
+                        style={e.isFeaturedBanner ? { background: '#f59e0b', borderColor: '#f59e0b', color: '#fff' } : undefined}
+                        onClick={() => feature(e, { isFeaturedBanner: !e.isFeaturedBanner })}
+                        title={e.isFeaturedBanner ? 'Đang ở banner trang chủ. Bấm để gỡ' : 'Đưa lên banner trang chủ'}
+                      >
+                        <Star size={13} fill={e.isFeaturedBanner ? 'currentColor' : 'none'} /> {e.isFeaturedBanner ? 'Đang ở banner' : 'Banner'}
                       </button>
                     </>
                   )}
-                  {['APPROVED', 'PUBLISHED'].includes(tab) && (
+                  {['APPROVED', 'PUBLISHED'].includes(tab) && !(e.endTime && new Date(e.endTime) < new Date()) && (
                     <button type='button' className='tb-btn tb-btn-outline tb-btn-sm text-red-700' onClick={() => openDlg('refund', e)}>
                       <Ban size={13} /> Huỷ & hoàn tiền
                     </button>

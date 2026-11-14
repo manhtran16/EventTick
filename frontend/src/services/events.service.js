@@ -39,7 +39,6 @@ export const eventsService = {
   categories: () => api.get('/categories'),
   inBanner: () => api.get('/events/in-banner'),
   trending: () => api.get('/events/trending'),
-  special: () => api.get('/events/in-special'),
   recommend: () => api.get('/events/recommend'),
   latestWeek: () => api.get('/events/latest/week'),
   latestMonth: () => api.get('/events/latest/month'),
@@ -51,11 +50,10 @@ export const eventsService = {
 
   /** Tải toàn bộ dữ liệu trang chủ trong 1 lần. */
   async loadHome() {
-    const [cats, banner, trending, special, week, month, all] = await Promise.all([
+    const [cats, banner, trending, week, month, all] = await Promise.all([
       this.categories().catch(() => ({ categories: [] })),
       this.inBanner().catch(() => ({})),
       this.trending().catch(() => ({})),
-      this.special().catch(() => ({})),
       this.latestWeek().catch(() => ({})),
       this.latestMonth().catch(() => ({})),
       this.search({ limit: 50 }).catch(() => ({})),
@@ -66,7 +64,6 @@ export const eventsService = {
     return {
       hero: map(banner, () => ({ badge: 'Sự kiện nổi bật' })),
       trending: map(trending, (i) => ({ rank: i + 1 })),
-      special: map(special),
       week: map(week),
       month: map(month),
       all: allCards,

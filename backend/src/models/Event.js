@@ -43,8 +43,6 @@ const schema = new Schema(
     organizer_name: { type: String },
     organizer_info: { type: String },
     event_type: { type: String, enum: ["offline", "online"], default: "offline" },
-    is_trending: { type: Boolean, default: false },
-    is_special: { type: Boolean, default: false },
     lowest_price: { type: Number, default: 0 },
     rejection_reason: { type: String },
     // Lịch sử đổi trạng thái (hiện ở tab "Lịch sử" của Organizer)

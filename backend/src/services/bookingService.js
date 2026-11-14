@@ -692,6 +692,8 @@ async function updateCheckoutInfo({ orderId, buyerId, attendeeFormAnswers, vatIn
 async function bulkRefundAndCancelEvent(eventId, reason = "Sự kiện bị huỷ theo quyết định của ban tổ chức / quản trị") {
   const e = await Event.findById(eventId);
   if (!e) throw httpError("Không tìm thấy sự kiện", 404);
+  if (e.status === "ENDED" || (e.end_time && e.end_time < new Date())) throw httpError("Sự kiện đã kết thúc, không thể huỷ & hoàn tiền", 409);
+  if (e.status === "CANCELLED") throw httpError("Sự kiện đã bị huỷ", 409);
 
   e.status = "CANCELLED";
   await e.save();

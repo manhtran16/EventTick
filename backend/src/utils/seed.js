@@ -144,8 +144,6 @@ async function run() {
       max_resale_markup_pct: 10,
       status: "PUBLISHED",
       is_featured_banner: !!e.isSpecial,
-      is_special: !!e.isSpecial,
-      is_trending: !!e.isTrending,
       organizer_name: "Demo Concert Co., Ltd.",
       organizer_info: e.organizerInfo,
       lowest_price: Math.min(...rawTiers.map((t) => Number(t.price) || 0)),

@@ -55,7 +55,7 @@ exports.adminListEvents = ah(async (req, res) => {
       .limit(limit)
       .populate("organizer_id", "full_name email")
       .populate("category_id", "name default_commission_pct")
-      .select("title organizer_id category_id organizer_name banner_url thumbnail_url venue_name city start_time end_time status created_at rejection_reason legal_doc_url lowest_price"),
+      .select("title organizer_id category_id organizer_name banner_url thumbnail_url venue_name city start_time end_time status created_at rejection_reason legal_doc_url lowest_price is_featured_banner"),
     Event.countDocuments(filter),
   ]);
   // Hợp đồng bị Organizer từ chối ký: Admin cần thấy lý do + mức hoa hồng cũ để chỉnh lại rồi duyệt lại
@@ -78,6 +78,7 @@ exports.adminListEvents = ah(async (req, res) => {
       createdAt: o.created_at,
       rejectionReason: o.rejection_reason,
       lowestPrice: o.lowest_price,
+      isFeaturedBanner: Boolean(o.is_featured_banner),
       hasLegalDoc: Boolean(o.legal_doc_url),
       organizerName: o.organizer_name || o.organizer_id?.full_name,
       organizerEmail: o.organizer_id?.email,
