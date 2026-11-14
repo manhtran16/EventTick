@@ -26,6 +26,7 @@ export default function StaffCheckInPage() {
 
   const [events, setEvents] = useState([]);
   const [selectedEventId, setSelectedEventId] = useState('');
+  const [selectedSessionId, setSelectedSessionId] = useState('');
   const [gate, setGate] = useState('Cổng chính');
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -42,8 +43,10 @@ export default function StaffCheckInPage() {
   const soundRef = useRef(sound);
   const busyRef = useRef(false);
   const selectedEventIdRef = useRef('');
+  const selectedSessionIdRef = useRef('');
   soundRef.current = sound;
   selectedEventIdRef.current = selectedEventId;
+  selectedSessionIdRef.current = selectedSessionId;
 
   useEffect(() => {
     api
@@ -56,11 +59,17 @@ export default function StaffCheckInPage() {
           const chosen = match || list[0];
           setSelectedEventId(chosen.id);
           if (chosen.assignedGate) setGate(chosen.assignedGate);
+          const sList = chosen.sessions || [];
+          const now = new Date();
+          const activeSession =
+            sList.find((s) => new Date(s.startTime) <= now && (!s.endTime || new Date(s.endTime) >= now)) || sList[0];
+          setSelectedSessionId(activeSession?.id || '');
           if (chosen.id !== queryEventId) {
             setSearchParams({ eventId: chosen.id }, { replace: true });
           }
         } else {
           setSelectedEventId('');
+          setSelectedSessionId('');
         }
       })
       .catch(() => {});
@@ -73,6 +82,11 @@ export default function StaffCheckInPage() {
     if (target?.assignedGate) {
       setGate(target.assignedGate);
     }
+    const sList = target?.sessions || [];
+    const now = new Date();
+    const activeSession =
+      sList.find((s) => new Date(s.startTime) <= now && (!s.endTime || new Date(s.endTime) >= now)) || sList[0];
+    setSelectedSessionId(activeSession?.id || '');
     setLast(null);
   };
 
@@ -101,6 +115,7 @@ export default function StaffCheckInPage() {
       if (!text) return;
 
       const activeEventId = selectedEventIdRef.current;
+      const activeSessionId = selectedSessionIdRef.current;
       const time = new Date().toLocaleTimeString('vi-VN');
 
       if (!activeEventId) {
@@ -108,6 +123,7 @@ export default function StaffCheckInPage() {
           ok: false,
           code: text,
           event: '',
+          session: '',
           zone: '',
           time,
           message: 'Bạn chưa được phân công sự kiện nào để soát vé.',
@@ -135,11 +151,13 @@ export default function StaffCheckInPage() {
           qrHash: hash || undefined,
           gate,
           eventId: activeEventId,
+          sessionId: activeSessionId || undefined,
         });
         const item = {
           ok: true,
           code: res.ticket?.ticketCode || code,
           event: res.ticket?.eventName || '',
+          session: res.ticket?.sessionName || '',
           zone: res.ticket?.zoneName || '',
           time,
           message: res.message || 'Check-in thành công',
@@ -148,7 +166,7 @@ export default function StaffCheckInPage() {
         setRecent((p) => [item, ...p].slice(0, 12));
         beep(true);
       } catch (err) {
-        const item = { ok: false, code, event: '', zone: '', time, message: err.message || 'Vé không hợp lệ' };
+        const item = { ok: false, code, event: '', session: '', zone: '', time, message: err.message || 'Vé không hợp lệ' };
         setLast(item);
         setRecent((p) => [item, ...p].slice(0, 12));
         beep(false);
@@ -273,6 +291,7 @@ export default function StaffCheckInPage() {
   };
 
   const selectedEvent = events.find((e) => e.id === selectedEventId);
+  const selectedSession = selectedEvent?.sessions?.find((s) => s.id === selectedSessionId);
 
   return (
     <div className='max-w-3xl mx-auto space-y-6'>
@@ -281,7 +300,7 @@ export default function StaffCheckInPage() {
           <h1 className='text-2xl font-bold tracking-tight'>Soát vé tại cổng</h1>
           <p className='text-sm text-[#71717a] mt-1'>
             {events.length
-              ? `Bạn đang được phân công ${events.length} sự kiện. Chỉ soát vé cho sự kiện được chọn.`
+              ? `Bạn đang được phân công ${events.length} sự kiện. Chỉ soát vé cho sự kiện và ca diễn được chọn.`
               : 'Bạn chưa được phân công sự kiện nào, chỉ soát được vé của sự kiện được giao.'}
           </p>
         </div>
@@ -312,7 +331,7 @@ export default function StaffCheckInPage() {
         </div>
       ) : (
         <div className='bg-white border border-[#e4e4e7] rounded-2xl p-5 space-y-4'>
-          <div className='grid gap-3 sm:grid-cols-2'>
+          <div className={`grid gap-3 ${selectedEvent?.sessions?.length ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
             <label className='flex flex-col gap-1 text-sm'>
               <span className='text-xs font-semibold uppercase tracking-wider text-[#52525b]'>
                 Sự kiện đang soát vé
@@ -330,6 +349,25 @@ export default function StaffCheckInPage() {
               </select>
             </label>
 
+            {Boolean(selectedEvent?.sessions?.length) && (
+              <label className='flex flex-col gap-1 text-sm'>
+                <span className='text-xs font-semibold uppercase tracking-wider text-[#52525b]'>
+                  Ca / Suất diễn ({selectedEvent.sessions.length})
+                </span>
+                <select
+                  aria-label='Ca diễn đang soát vé'
+                  className={inputCls}
+                  value={selectedSessionId}
+                  onChange={(e) => setSelectedSessionId(e.target.value)}>
+                  {selectedEvent.sessions.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.startTime ? new Date(s.startTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : ''})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
             <label className='flex flex-col gap-1 text-sm'>
               <span className='text-xs font-semibold uppercase tracking-wider text-[#52525b]'>Cổng soát vé</span>
               <input
@@ -345,6 +383,11 @@ export default function StaffCheckInPage() {
           <div className='flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-[#f4f4f6]'>
             <span className='text-xs text-[#71717a]'>
               Đang soát cho: <strong className='text-[#09090b]'>{selectedEvent?.title || '—'}</strong>
+              {selectedSession && (
+                <>
+                  {' '}· Ca: <strong className='text-[#09090b]'>{selectedSession.name}</strong>
+                </>
+              )}
             </span>
             {camOn ? (
               <button type='button' className='tb-btn tb-btn-outline' onClick={stopCamera}>
@@ -406,7 +449,7 @@ export default function StaffCheckInPage() {
             <div className='text-xs mt-2 opacity-80 font-mono break-all'>{last.code}</div>
             {last.ok && (
               <div className='text-xs mt-1 opacity-80'>
-                {last.event} · {last.zone}
+                {last.event} {last.session ? `· ${last.session}` : ''} · {last.zone}
               </div>
             )}
           </div>
@@ -424,7 +467,7 @@ export default function StaffCheckInPage() {
                   <span className='font-mono text-xs truncate'>{r.code}</span>
                 </span>
                 <span className='text-xs text-[#71717a] shrink-0'>
-                  {r.ok ? r.zone : r.message} · {r.time}
+                  {r.ok ? `${r.session ? `${r.session} · ` : ''}${r.zone}` : r.message} · {r.time}
                 </span>
               </li>
             ))}

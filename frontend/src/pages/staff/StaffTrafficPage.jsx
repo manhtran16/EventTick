@@ -17,6 +17,7 @@ export default function StaffTrafficPage() {
 
   const [events, setEvents] = useState([]);
   const [eventId, setEventId] = useState('');
+  const [sessionId, setSessionId] = useState('');
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [auto, setAuto] = useState(true);
@@ -48,6 +49,7 @@ export default function StaffTrafficPage() {
 
   const handleEventChange = (newId) => {
     setEventId(newId);
+    setSessionId('');
     setSearchParams(newId ? { eventId: newId } : {});
     setStats(null);
   };
@@ -57,7 +59,8 @@ export default function StaffTrafficPage() {
       if (!eventId) return;
       if (!silent) setLoading(true);
       try {
-        const r = await api.get(`/booking/staff/events/${eventId}/check-in-stats`);
+        const q = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : '';
+        const r = await api.get(`/booking/staff/events/${eventId}/check-in-stats${q}`);
         setStats(r.stats);
         setUpdatedAt(new Date());
       } catch (err) {
@@ -67,7 +70,7 @@ export default function StaffTrafficPage() {
         setLoading(false);
       }
     },
-    [eventId, showToast],
+    [eventId, sessionId, showToast],
   );
 
   useEffect(() => {
@@ -76,6 +79,8 @@ export default function StaffTrafficPage() {
     const t = setInterval(() => load(true), REFRESH_MS);
     return () => clearInterval(t);
   }, [load, auto, eventId]);
+
+  const selectedEvent = events.find((e) => e.id === eventId);
 
   return (
     <div className='max-w-4xl mx-auto space-y-6'>
@@ -99,6 +104,21 @@ export default function StaffTrafficPage() {
               </option>
             ))}
           </select>
+          {Boolean(selectedEvent?.sessions?.length) && (
+            <select
+              aria-label='Ca / Suất diễn'
+              className={`${inputCls} !w-44`}
+              value={sessionId}
+              onChange={(e) => setSessionId(e.target.value)}
+            >
+              <option value=''>Tất cả ca diễn</option>
+              {selectedEvent.sessions.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          )}
           <label className='flex items-center gap-1.5 text-xs cursor-pointer'>
             <input type='checkbox' className='w-4 h-4 accent-[#09090b]' checked={auto} onChange={(e) => setAuto(e.target.checked)} /> Tự làm mới
           </label>

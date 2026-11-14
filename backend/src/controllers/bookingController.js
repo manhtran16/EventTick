@@ -329,11 +329,43 @@ exports.checkInTicket = async (req, res) => {
     if (!code) return res.status(400).json({ success: false, message: "Thiếu mã vé QR" });
 
     const targetEventId = req.body?.eventId ? String(req.body.eventId).trim() : null;
+    const targetSessionId = req.body?.sessionId ? String(req.body.sessionId).trim() : null;
 
     const ticket = await Ticket.findOne({ ticket_code: code })
       .populate("event_id", "title venue_name organizer_id")
+      .populate("session_id", "name start_time end_time status")
       .populate("tier_id", "name");
     if (!ticket) return res.status(404).json({ success: false, message: "Mã vé không hợp lệ" });
+
+    // Kiểm tra ca/suất diễn (UC32): chặn trường hợp vé ca 2 đi ca 1 và ngược lại
+    const ticketSessionId = String(ticket.session_id?._id || ticket.session_id || "");
+    if (targetSessionId && ticketSessionId) {
+      if (ticketSessionId !== targetSessionId) {
+        const sessionName = ticket.session_id?.name || "ca khác";
+        const sessionTime = ticket.session_id?.start_time
+          ? ` (bắt đầu lúc ${new Date(ticket.session_id.start_time).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })})`
+          : "";
+        return res.status(400).json({
+          success: false,
+          message: `Sai ca diễn! Vé này dành cho "${sessionName}"${sessionTime}, không thể vào ca đang soát vé.`,
+        });
+      }
+    }
+
+    if (ticket.session_id) {
+      if (ticket.session_id.status === "CANCELLED") {
+        return res.status(400).json({
+          success: false,
+          message: `Ca diễn "${ticket.session_id.name}" đã bị hủy, vé không còn hiệu lực.`,
+        });
+      }
+      if (ticket.session_id.status === "ENDED") {
+        return res.status(400).json({
+          success: false,
+          message: `Ca diễn "${ticket.session_id.name}" đã kết thúc, không thể soát vé.`,
+        });
+      }
+    }
 
     // Xác thực chữ ký bảo mật HMAC-SHA256 của vé (chống vé giả / can thiệp DB hoặc QR giả mạo)
     const crypto = require("crypto");
@@ -452,6 +484,7 @@ exports.checkInTicket = async (req, res) => {
       ticket: {
         ticketCode: updated.ticket_code,
         eventName: ticket.event_id?.title,
+        sessionName: ticket.session_id?.name,
         zoneName: ticket.tier_id?.name,
         scannedAt: updated.checked_in_at,
       },
@@ -502,8 +535,25 @@ exports.myStaffEvents = async (req, res) => {
       filter = req.user.role === "ORGANIZER" ? { $or: [{ _id: { $in: ids } }, { organizer_id: req.user.id }] } : { _id: { $in: ids } };
     }
     const events = await Event.find(filter).sort({ start_time: -1 }).limit(100).select("title venue_name city start_time status");
-    const gates = await StaffAssignment.find({ staff_user_id: req.user.id, is_active: true }).select("event_id assigned_gate");
+    const eventIds = events.map((e) => e._id);
+    const [gates, sessions] = await Promise.all([
+      StaffAssignment.find({ staff_user_id: req.user.id, is_active: true }).select("event_id assigned_gate"),
+      EventSession.find({ event_id: { $in: eventIds } }).sort({ start_time: 1 }).select("_id event_id name start_time end_time status"),
+    ]);
     const gateByEvent = new Map(gates.map((g) => [String(g.event_id), g.assigned_gate]));
+    const sessionsByEvent = new Map();
+    for (const s of sessions) {
+      const eid = String(s.event_id);
+      if (!sessionsByEvent.has(eid)) sessionsByEvent.set(eid, []);
+      sessionsByEvent.get(eid).push({
+        id: s._id,
+        name: s.name,
+        startTime: s.start_time,
+        endTime: s.end_time,
+        status: s.status,
+      });
+    }
+
     res.json({
       success: true,
       events: events.map((e) => ({
@@ -514,6 +564,7 @@ exports.myStaffEvents = async (req, res) => {
         startTime: e.start_time,
         status: e.status,
         assignedGate: gateByEvent.get(String(e._id)) || null,
+        sessions: sessionsByEvent.get(String(e._id)) || [],
       })),
     });
   } catch (err) {
@@ -525,6 +576,7 @@ exports.myStaffEvents = async (req, res) => {
 exports.getStaffCheckInStats = async (req, res) => {
   try {
     const { eventId } = req.params;
+    const sessionId = req.query?.sessionId ? String(req.query.sessionId).trim() : null;
 
     // Phân quyền: ADMIN hoặc ORGANIZER của sự kiện hoặc STAFF có phân công
     const event = await Event.findById(eventId);
@@ -565,10 +617,14 @@ exports.getStaffCheckInStats = async (req, res) => {
       });
     }
 
-    const [totalValidAndUsed, checkedInCount, tiers] = await Promise.all([
-      Ticket.countDocuments({ event_id: eventId, status: { $in: ["VALID", "USED"] } }),
-      Ticket.countDocuments({ event_id: eventId, status: "USED" }),
-      TicketTier.find({ event_id: eventId }),
+    const baseTicketQuery = { event_id: eventId };
+    if (sessionId) baseTicketQuery.session_id = sessionId;
+
+    const [totalValidAndUsed, checkedInCount, tiers, sessions] = await Promise.all([
+      Ticket.countDocuments({ ...baseTicketQuery, status: { $in: ["VALID", "USED"] } }),
+      Ticket.countDocuments({ ...baseTicketQuery, status: "USED" }),
+      TicketTier.find(sessionId ? { event_id: eventId, session_id: sessionId } : { event_id: eventId }),
+      EventSession.find({ event_id: eventId }).sort({ start_time: 1 }).select("_id name start_time end_time status"),
     ]);
 
     const remainingCount = Math.max(0, totalValidAndUsed - checkedInCount);
@@ -577,9 +633,10 @@ exports.getStaffCheckInStats = async (req, res) => {
     // Phân bố theo hạng vé
     const tierStats = await Promise.all(
       tiers.map(async (t) => {
+        const tierQuery = { ...baseTicketQuery, tier_id: t._id };
         const [totalTier, usedTier] = await Promise.all([
-          Ticket.countDocuments({ event_id: eventId, tier_id: t._id, status: { $in: ["VALID", "USED"] } }),
-          Ticket.countDocuments({ event_id: eventId, tier_id: t._id, status: "USED" }),
+          Ticket.countDocuments({ ...tierQuery, status: { $in: ["VALID", "USED"] } }),
+          Ticket.countDocuments({ ...tierQuery, status: "USED" }),
         ]);
         return {
           tierId: t._id,
@@ -592,8 +649,9 @@ exports.getStaffCheckInStats = async (req, res) => {
     );
 
     // Danh sách 10 lượt soát vé gần nhất
-    const recentCheckIns = await Ticket.find({ event_id: eventId, status: "USED" })
+    const recentCheckIns = await Ticket.find({ ...baseTicketQuery, status: "USED" })
       .populate("tier_id", "name")
+      .populate("session_id", "name")
       .populate("checked_in_by", "full_name username")
       .sort({ checked_in_at: -1 })
       .limit(10);
@@ -607,9 +665,17 @@ exports.getStaffCheckInStats = async (req, res) => {
         checkInRatePct,
         tierStats,
         tierBreakdown: tierStats,
+        sessions: sessions.map((s) => ({
+          id: s._id,
+          name: s.name,
+          startTime: s.start_time,
+          endTime: s.end_time,
+          status: s.status,
+        })),
         recentCheckIns: recentCheckIns.map((t) => ({
           ticketCode: t.ticket_code,
           tierName: t.tier_id?.name,
+          sessionName: t.session_id?.name,
           checkedInAt: t.checked_in_at,
           checkedInBy: t.checked_in_by?.full_name || t.checked_in_by?.username,
         })),
