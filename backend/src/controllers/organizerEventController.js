@@ -1,3 +1,4 @@
+const ExcelJS = require("exceljs");
 const {
   Event,
   EventSession,
@@ -1210,7 +1211,7 @@ exports.getEventAttendees = ah(async (req, res) => {
       .populate("tier_id", "name price")
       .populate("seat_id", "section_name row_label seat_number")
       .populate("session_id", "name start_time")
-      .populate("order_id", "order_code attendee_form_answers")
+      .populate("order_id", "order_code attendee_form_answers vat_invoice_info")
       .sort({ created_at: -1 })
       .skip(skip)
       .limit(limitNum),
@@ -1237,6 +1238,7 @@ exports.getEventAttendees = ah(async (req, res) => {
       checkedInAt: t.checked_in_at,
       orderCode: t.order_id?.order_code,
       attendeeFormAnswers: t.order_id?.attendee_form_answers,
+      vatInvoiceInfo: t.order_id?.vat_invoice_info,
     })),
     total,
     page: pageNum,
@@ -1593,7 +1595,7 @@ exports.getEventAnalytics = ah(async (req, res) => {
   });
 });
 
-// ------------------------------------------------------------------ UC33: data export (CSV)
+// ------------------------------------------------------------------ UC33: data export (Excel)
 // GET /v1/organizer/events/:id/export/attendees
 exports.exportAttendees = ah(async (req, res) => {
   const e = await ownEvent(req, req.params.id);
@@ -1604,48 +1606,64 @@ exports.exportAttendees = ah(async (req, res) => {
     .populate("session_id", "name")
     .sort({ created_at: -1 });
 
-  const rows = [
-    [
-      "Mã vé",
-      "Suất diễn",
-      "Hạng vé",
-      "Ghế",
-      "Họ tên",
-      "Email",
-      "Số điện thoại",
-      "Trạng thái",
-      "Thời gian soát vé",
-    ],
+  const statusMap = {
+    VALID: "Hợp lệ",
+    USED: "Đã soát vé",
+    LISTED_RESALE: "Đang bán lại",
+    RESOLD_INVALID: "Đã sang nhượng",
+    REFUNDED: "Đã hoàn tiền",
+  };
+
+  const dataRows = tickets.map((t, index) => [
+    index + 1,
+    t.owner_id?.full_name || t.owner_id?.username || "—",
+    t.owner_id?.phone || "—",
+    t.owner_id?.email || "—",
+    t.tier_id?.name || "—",
+    t.seat_id ? `${t.seat_id.section_name}-${t.seat_id.row_label}${t.seat_id.seat_number}` : "GA",
+    t.ticket_code,
+    t.session_id?.name || "—",
+    statusMap[t.status] || t.status,
+    t.checked_in_at ? new Date(t.checked_in_at).toLocaleString("vi-VN") : "—",
+  ]);
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "EventTick";
+  wb.created = new Date();
+  const ws = wb.addWorksheet("Nguoi_tham_du");
+
+  ws.columns = [
+    { header: "STT", key: "stt", width: 8 },
+    { header: "H\u1ECD v\u00E0 t\u00EAn", key: "name", width: 25 },
+    { header: "S\u1ED1 \u0111i\u1EC7n tho\u1EA1i", key: "phone", width: 16 },
+    { header: "Email", key: "email", width: 28 },
+    { header: "H\u1EA1ng v\u00E9", key: "tier", width: 18 },
+    { header: "V\u1ECB tr\u00ED gh\u1EBF", key: "seat", width: 14 },
+    { header: "M\u00E3 v\u00E9", key: "code", width: 28 },
+    { header: "Su\u1EA5t di\u1EC5n", key: "session", width: 22 },
+    { header: "Tr\u1EA1ng th\u00E1i", key: "status", width: 16 },
+    { header: "Th\u1EDDi gian so\u00E1t v\u00E9", key: "checkedIn", width: 22 },
   ];
 
-  for (const t of tickets) {
-    rows.push([
-      t.ticket_code,
-      t.session_id?.name || "",
-      t.tier_id?.name || "",
-      t.seat_id
-        ? `${t.seat_id.section_name}-${t.seat_id.row_label}${t.seat_id.seat_number}`
-        : "GA",
-      t.owner_id?.full_name || t.owner_id?.username || "",
-      t.owner_id?.email || "",
-      t.owner_id?.phone || "",
-      t.status,
-      t.checked_in_at ? new Date(t.checked_in_at).toLocaleString("vi-VN") : "",
-    ]);
-  }
+  const headerRow = ws.getRow(1);
+  headerRow.height = 28;
+  headerRow.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 11 };
+  headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF18181B" } };
+  headerRow.alignment = { vertical: "middle", horizontal: "center" };
 
-  const csv =
-    "\uFEFF" +
-    rows
-      .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))
-      .join("\r\n");
+  dataRows.forEach((row) => {
+    const r = ws.addRow(row);
+    r.height = 22;
+    r.alignment = { vertical: "middle" };
+    r.getCell(1).alignment = { vertical: "middle", horizontal: "center" };
+    r.getCell(6).alignment = { vertical: "middle", horizontal: "center" };
+    r.getCell(9).alignment = { vertical: "middle", horizontal: "center" };
+  });
 
-  res.setHeader("Content-Type", "text/csv; charset=utf-8");
-  res.setHeader(
-    "Content-Disposition",
-    `attachment; filename="attendees-${e._id}.csv"`,
-  );
-  res.send(csv);
+  const buffer = Buffer.from(await wb.xlsx.writeBuffer());
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", `attachment; filename="attendees-${e._id}.xlsx"`);
+  res.send(buffer);
 });
 
 // GET /v1/organizer/events/:id/export/orders
@@ -1656,52 +1674,68 @@ exports.exportOrders = ah(async (req, res) => {
     .populate("session_id", "name")
     .sort({ created_at: -1 });
 
-  const rows = [
-    [
-      "Mã đơn",
-      "Suất diễn",
-      "Họ tên khách",
-      "Email",
-      "Số điện thoại",
-      "Tổng tiền",
-      "Giảm giá",
-      "Thực thu",
-      "Trạng thái",
-      "Ngày tạo",
-      "Công ty VAT",
-      "MST VAT",
-    ],
+  const statusMap = {
+    PAID: "Đã thanh toán",
+    PENDING_PAYMENT: "Chờ thanh toán",
+    EXPIRED: "Hết hạn",
+    CANCELLED: "Đã huỷ",
+    REFUNDED: "Đã hoàn tiền",
+  };
+
+  const dataRows = orders.map((o, index) => [
+    index + 1,
+    o.order_code,
+    o.buyer_id?.full_name || o.buyer_id?.username || "—",
+    o.buyer_id?.phone || "—",
+    o.buyer_id?.email || "—",
+    o.session_id?.name || "—",
+    o.subtotal_amount || 0,
+    o.discount_amount || 0,
+    o.total_amount || 0,
+    statusMap[o.status] || o.status,
+    o.created_at ? new Date(o.created_at).toLocaleString("vi-VN") : "—",
+  ]);
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "EventTick";
+  wb.created = new Date();
+  const ws = wb.addWorksheet("Don_hang");
+
+  ws.columns = [
+    { header: "STT", key: "stt", width: 8 },
+    { header: "M\u00E3 \u0111\u01A1n", key: "orderCode", width: 26 },
+    { header: "H\u1ECD t\u00EAn kh\u00E1ch", key: "buyerName", width: 24 },
+    { header: "S\u1ED1 \u0111i\u1EC7n tho\u1EA1i", key: "phone", width: 16 },
+    { header: "Email", key: "email", width: 28 },
+    { header: "Su\u1EA5t di\u1EC5n", key: "session", width: 22 },
+    { header: "T\u1ED5ng ti\u1EC1n (\u0111)", key: "subtotal", width: 16 },
+    { header: "Gi\u1EA3m gi\u00E1 (\u0111)", key: "discount", width: 16 },
+    { header: "Th\u1EF1c thu (\u0111)", key: "total", width: 16 },
+    { header: "Tr\u1EA1ng th\u00E1i", key: "status", width: 16 },
+    { header: "Ng\u00E0y t\u1EA1o", key: "createdAt", width: 22 },
   ];
 
-  for (const o of orders) {
-    rows.push([
-      o.order_code,
-      o.session_id?.name || "",
-      o.buyer_id?.full_name || o.buyer_id?.username || "",
-      o.buyer_id?.email || "",
-      o.buyer_id?.phone || "",
-      o.subtotal_amount,
-      o.discount_amount,
-      o.total_amount,
-      o.status,
-      o.created_at ? new Date(o.created_at).toLocaleString("vi-VN") : "",
-      o.vat_invoice_info?.company_name || "",
-      o.vat_invoice_info?.tax_code || "",
-    ]);
-  }
+  const headerRow = ws.getRow(1);
+  headerRow.height = 28;
+  headerRow.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 11 };
+  headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF18181B" } };
+  headerRow.alignment = { vertical: "middle", horizontal: "center" };
 
-  const csv =
-    "\uFEFF" +
-    rows
-      .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))
-      .join("\r\n");
+  dataRows.forEach((row) => {
+    const r = ws.addRow(row);
+    r.height = 22;
+    r.alignment = { vertical: "middle" };
+    r.getCell(1).alignment = { vertical: "middle", horizontal: "center" };
+    r.getCell(7).numFmt = "#,##0";
+    r.getCell(8).numFmt = "#,##0";
+    r.getCell(9).numFmt = "#,##0";
+    r.getCell(10).alignment = { vertical: "middle", horizontal: "center" };
+  });
 
-  res.setHeader("Content-Type", "text/csv; charset=utf-8");
-  res.setHeader(
-    "Content-Disposition",
-    `attachment; filename="orders-${e._id}.csv"`,
-  );
-  res.send(csv);
+  const buffer = Buffer.from(await wb.xlsx.writeBuffer());
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", `attachment; filename="orders-${e._id}.xlsx"`);
+  res.send(buffer);
 });
 
 // ------------------------------------------------------------------ UC34: payout settlement
@@ -1729,9 +1763,13 @@ exports.getPayoutSummary = ah(async (req, res) => {
   );
   const netPayoutAmount = Math.max(0, grossRevenue - platformCommissionAmt);
 
+  const isEnded = e.status === "ENDED" || (e.end_time && new Date(e.end_time) <= new Date());
+
   const payoutData = {
     eventId: e._id,
     title: e.title,
+    isEnded,
+    canRequestPayout: isEnded && e.status !== "CANCELLED" && (!existingSettlement || existingSettlement.status === "REJECTED"),
     grossRevenue,
     commissionRatePct,
     platformCommissionAmt,
@@ -1759,9 +1797,17 @@ exports.getPayoutSummary = ah(async (req, res) => {
 exports.requestPayout = ah(async (req, res) => {
   const e = await ownEvent(req, req.params.id);
 
-  const existingSettlement = await PayoutSettlement.findOne({
-    event_id: e._id,
-  });
+  if (e.status === "CANCELLED") {
+    throw httpError("Sự kiện đã bị huỷ, không thể kết toán", 400);
+  }
+
+  const now = new Date();
+  const isEnded = e.status === "ENDED" || (e.end_time && new Date(e.end_time) <= now);
+  if (!isEnded) {
+    throw httpError("Sự kiện chưa kết thúc, không thể kết toán", 400);
+  }
+
+  const existingSettlement = await PayoutSettlement.findOne({ event_id: e._id });
   // Yêu cầu bị Admin từ chối thì được gửi lại (cập nhật bản ghi cũ vì mỗi sự kiện chỉ có một yêu cầu)
   if (existingSettlement && existingSettlement.status !== "REJECTED") {
     throw httpError(
